@@ -1,0 +1,48 @@
+{% load static %}
+<aside class="sidebar glass" data-nav aria-label="Sections">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32"><path d="M16 3 4 10v12l12 7 12-7V10Z"/><path d="M16 3v26M4 10l12 7 12-7"/></svg>
+    </span>
+    <span class="brand-text">
+      <strong>{{ site_name }}</strong>
+      <small>Generative studio</small>
+    </span>
+  </div>
+
+  <nav class="nav">
+    {% for section in nav_sections %}
+      <a class="nav-item{% if category == section.key %} is-active{% endif %}" href="{% url section.url_name %}">
+        <span class="nav-icon" aria-hidden="true">{% include "partials/icon.html" with name=section.icon %}</span>
+        <span class="nav-label">{{ section.label }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+
+  <div class="sidebar-foot">
+    <a class="nav-item{% if category == 'settings' %} is-active{% endif %}" href="{% url 'accounts:settings' %}">
+      <span class="nav-icon" aria-hidden="true">{% include "partials/icon.html" with name="settings" %}</span>
+      <span class="nav-label">Settings</span>
+    </a>
+
+    {% if user.is_authenticated %}
+      <div class="user-chip">
+        <span class="avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
+        <span class="user-meta">
+          <strong>{{ user.username }}</strong>
+          {% if user.settings.has_kie_key %}
+            <small class="ok">API key set</small>
+          {% else %}
+            <small class="warn">No API key</small>
+          {% endif %}
+        </span>
+        <form method="post" action="{% url 'accounts:logout' %}">
+          {% csrf_token %}
+          <button class="icon-button" type="submit" aria-label="Sign out" title="Sign out">
+            {% include "partials/icon.html" with name="logout" %}
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+</aside>

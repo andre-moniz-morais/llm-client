@@ -1,0 +1,29 @@
+{% comment %}
+Rendered both on page load and as the fragment returned after a turn, so the
+markup for a message lives in exactly one place.
+{% endcomment %}
+{% for message in messages_list %}
+  <article class="msg msg-{{ message.role }}{% if message.status == 'failed' %} msg-failed{% endif %}" data-message-id="{{ message.pk }}">
+    <div class="msg-avatar" aria-hidden="true">{% if message.is_user %}{{ user.username|slice:":1"|upper }}{% else %}AI{% endif %}</div>
+    <div class="msg-body">
+      <div class="msg-meta">
+        <strong>{% if message.is_user %}You{% else %}{{ conversation.model_name|default:"Assistant" }}{% endif %}</strong>
+        <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"H:i" }}</time>
+        {% if message.usage.total_tokens %}<span class="pill">{{ message.usage.total_tokens }} tokens</span>{% endif %}
+      </div>
+
+      <div class="msg-content">
+        {# Assistant markup is sanitised in apps.common.services.html before it is stored. #}
+        {{ message.content_html|safe }}
+      </div>
+
+      {% if message.attachments %}
+        <div class="msg-attachments">
+          {% for attachment in message.attachments %}
+            <img src="{{ attachment.local_url|default:attachment.url }}" alt="{{ attachment.name|default:'Attachment' }}" loading="lazy">
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </article>
+{% endfor %}

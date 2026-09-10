@@ -1,0 +1,67 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Library · {{ site_name }}{% endblock %}
+{% block page_title %}Library{% endblock %}
+{% block page_subtitle %}<div class="subtitle">{{ generations.paginator.count }} generation{{ generations.paginator.count|pluralize }}</div>{% endblock %}
+
+{% block content %}
+  <div class="panel glass" style="flex:none">
+    <div class="filter-row">
+      <a class="button button-sm{% if not active_filter %} button-primary{% endif %}" href="{% url 'generation:gallery' %}">All</a>
+      <a class="button button-sm{% if active_filter == 'image' %} button-primary{% endif %}" href="?category=image">Images</a>
+      <a class="button button-sm{% if active_filter == 'video' %} button-primary{% endif %}" href="?category=video">Videos</a>
+      <a class="button button-sm{% if active_filter == 'music' %} button-primary{% endif %}" href="?category=music">Music</a>
+    </div>
+  </div>
+
+  <div style="flex:1; min-height:0; overflow-y:auto">
+    {% if generations %}
+      <div class="gallery-grid">
+        {% for generation in generations %}
+          {% for asset in generation.assets.all %}
+            <article class="gallery-card glass">
+              <div class="gallery-thumb">
+                {% if asset.kind == "video" %}
+                  <video src="{{ asset.url }}" controls preload="metadata" playsinline></video>
+                {% elif asset.kind == "audio" %}
+                  {% if asset.thumbnail_url %}<img src="{{ asset.thumbnail_url }}" alt="" loading="lazy">{% else %}
+                    <span class="empty-icon">{% include "partials/icon.html" with name="music" %}</span>
+                  {% endif %}
+                {% else %}
+                  <img src="{{ asset.url }}" alt="{{ generation.short_prompt }}" loading="lazy">
+                {% endif %}
+              </div>
+              <div class="gallery-meta">
+                <strong>{{ generation.model_name|default:generation.model_slug|truncatechars:34 }}</strong>
+                {% if asset.kind == "audio" %}<audio src="{{ asset.url }}" controls preload="none"></audio>{% endif %}
+                <p>{{ generation.short_prompt|default:"No prompt" }}</p>
+                <div class="filter-row">
+                  <span class="pill">{{ generation.created_at|date:"j M" }}</span>
+                  <a class="pill" href="{{ asset.url }}" download target="_blank" rel="noopener">Download</a>
+                </div>
+              </div>
+            </article>
+          {% endfor %}
+        {% endfor %}
+      </div>
+
+      {% if generations.has_other_pages %}
+        <div class="pager">
+          {% if generations.has_previous %}
+            <a class="button button-sm" href="?{% if active_filter %}category={{ active_filter }}&{% endif %}page={{ generations.previous_page_number }}">Newer</a>
+          {% endif %}
+          <span>Page {{ generations.number }} of {{ generations.paginator.num_pages }}</span>
+          {% if generations.has_next %}
+            <a class="button button-sm" href="?{% if active_filter %}category={{ active_filter }}&{% endif %}page={{ generations.next_page_number }}">Older</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="panel glass empty">
+        <span class="empty-icon">{% include "partials/icon.html" with name="gallery" %}</span>
+        <strong>Nothing here yet</strong>
+        <span>Generations you run show up here and stay available.</span>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

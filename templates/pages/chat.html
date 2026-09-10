@@ -1,0 +1,98 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}Chat · {{ site_name }}{% endblock %}
+{% block page_title %}Chat{% endblock %}
+{% block page_subtitle %}
+  <div class="subtitle">{{ models|length }} model{{ models|length|pluralize }} available</div>
+{% endblock %}
+
+{% block topbar_actions %}
+  <a class="button button-sm" href="{% url 'chat:index' %}">
+    {% include "partials/icon.html" with name="plus" %} New chat
+  </a>
+{% endblock %}
+
+{% block content %}
+  {% if not has_key %}
+    <div class="flash glass flash-warning">
+      Add your API key in <a href="{% url 'accounts:settings' %}">Settings</a> before sending a message.
+    </div>
+  {% endif %}
+
+  {% include "partials/model_bar.html" with models=models providers=providers selected_slug=selected_slug %}
+
+  <div class="chat-layout">
+    <div class="chat-main">
+      <div class="transcript glass" id="transcript" data-transcript>
+        {% if messages_list %}
+          {% include "partials/messages.html" with messages_list=messages_list %}
+        {% else %}
+          <div class="empty" data-empty-state>
+            <span class="empty-icon">{% include "partials/icon.html" with name="spark" %}</span>
+            <strong>Start a conversation</strong>
+            <span>Pick a model above and ask anything. Attach images for models that accept them.</span>
+          </div>
+        {% endif %}
+      </div>
+
+      <form class="composer glass"
+            id="composer"
+            method="post"
+            action="{% url 'chat:send' %}"
+            enctype="multipart/form-data"
+            data-chat-form
+            data-conversation="{{ conversation.pk|default:'' }}"
+            data-notify="{{ notify_on_reply|yesno:'true,false' }}">
+        {% csrf_token %}
+        <input type="hidden" name="conversation" value="{{ conversation.pk|default:'' }}" data-conversation-input>
+        <input type="hidden" name="model" value="{{ selected_slug }}" data-model-input>
+
+        <div class="attach-preview" data-attach-preview></div>
+
+        <div class="composer-row">
+          <input type="file" name="images" accept="image/*" multiple hidden data-attach-input>
+          <button class="icon-button" type="button" data-attach-trigger aria-label="Attach images" title="Attach images">
+            {% include "partials/icon.html" with name="attach" %}
+          </button>
+
+          <textarea name="message"
+                    rows="1"
+                    placeholder="Ask anything…"
+                    data-autogrow
+                    aria-label="Message"></textarea>
+
+          <div class="composer-actions">
+            <button class="button button-primary" type="submit" data-send>
+              {% include "partials/icon.html" with name="send" %}
+              <span>Send</span>
+            </button>
+          </div>
+        </div>
+        <div class="composer-hint">Enter sends · Shift+Enter for a new line</div>
+      </form>
+    </div>
+
+    <aside class="panel glass thread-panel">
+      <div class="panel-head">
+        <h2>History</h2>
+        <p>{{ conversations|length }}</p>
+      </div>
+      <div class="thread-list">
+        {% for thread in conversations %}
+          <a class="thread{% if conversation and thread.pk == conversation.pk %} is-active{% endif %}"
+             href="{% url 'chat:index' %}?conversation={{ thread.pk }}">
+            {{ thread.display_title }}
+            <small>{{ thread.model_name|default:thread.model_slug }} · {{ thread.updated_at|timesince }} ago</small>
+          </a>
+        {% empty %}
+          <p class="muted" style="font-size:12.5px">No conversations yet.</p>
+        {% endfor %}
+      </div>
+    </aside>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'js/chat.js' %}" defer></script>
+{% endblock %}

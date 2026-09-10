@@ -1,0 +1,67 @@
+{% comment %}
+A generation's result card. While the task is running the card carries
+data-poll, which the page uses to re-request this same fragment until the
+status header says it has finished.
+{% endcomment %}
+<article class="result-card glass"
+         id="generation-{{ generation.pk }}"
+         data-generation="{{ generation.pk }}"
+         data-status="{{ generation.status }}"
+         {% if not generation.is_finished %}data-poll{% endif %}>
+
+  <div class="result-head">
+    <div class="result-title">
+      <strong>{{ generation.model_name|default:generation.model_slug }}</strong>
+      <span>{{ generation.created_at|date:"j M, H:i" }}</span>
+    </div>
+    {% if generation.status == "succeeded" %}
+      <span class="pill pill-ok">Done</span>
+    {% elif generation.status == "failed" %}
+      <span class="pill pill-danger">Failed</span>
+    {% else %}
+      <span class="pill pill-warn">Working…</span>
+    {% endif %}
+  </div>
+
+  {% if generation.prompt %}
+    <p class="result-prompt">{{ generation.prompt|truncatechars:220 }}</p>
+  {% endif %}
+
+  {% if generation.status == "failed" %}
+    <div class="ai-html">
+      <div class="callout callout-warn">{{ generation.error|default:"This generation could not be completed." }}</div>
+    </div>
+
+  {% elif generation.status == "succeeded" %}
+    {% with assets=generation.assets.all %}
+      <div class="result-media{% if assets|length == 1 %} is-single{% endif %}">
+        {% for asset in assets %}
+          <div class="media-item">
+            {% if asset.kind == "video" %}
+              <video src="{{ asset.url }}" controls preload="metadata"
+                     {% if asset.thumbnail_url %}poster="{{ asset.thumbnail_url }}"{% endif %} playsinline></video>
+            {% elif asset.kind == "audio" %}
+              {% if asset.thumbnail_url %}<img src="{{ asset.thumbnail_url }}" alt="" loading="lazy">{% endif %}
+              <audio src="{{ asset.url }}" controls preload="none"></audio>
+              {% if asset.title %}<p class="result-prompt" style="padding:0 12px 10px">{{ asset.title }}</p>{% endif %}
+            {% else %}
+              <img src="{{ asset.url }}" alt="{{ generation.short_prompt }}" loading="lazy">
+            {% endif %}
+
+            <div class="media-actions">
+              <a class="button button-sm" href="{{ asset.url }}" download target="_blank" rel="noopener">
+                {% include "partials/icon.html" with name="download" %}
+              </a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endwith %}
+
+  {% else %}
+    <p class="muted" style="font-size:12.5px">
+      Queued{% if generation.task_id %} · task {{ generation.task_id|slice:":12" }}{% endif %}
+    </p>
+    <div class="progress-bar" aria-label="Generating"></div>
+  {% endif %}
+</article>

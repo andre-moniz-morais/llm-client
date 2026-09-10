@@ -1,0 +1,42 @@
+{% comment %}
+The model picker. Options are grouped by provider and carry the provider as a
+data attribute so the search and provider filters can hide them client-side
+without another round trip.
+{% endcomment %}
+<div class="model-bar glass" data-model-bar>
+  <label class="model-search">
+    {% include "partials/icon.html" with name="search" %}
+    <input class="field-input"
+           type="search"
+           placeholder="Search {{ models|length }} models…"
+           aria-label="Search models"
+           data-model-search>
+  </label>
+
+  <label class="model-select">
+    <select class="field-input" data-model-select aria-label="Model">
+      {% regroup models by provider as provider_groups %}
+      {% for group in provider_groups %}
+        <optgroup label="{{ group.grouper }}">
+          {% for model in group.list %}
+            <option value="{{ model.slug }}"
+                    data-provider="{{ model.provider }}"
+                    data-search="{{ model.name|lower }} {{ model.provider|lower }} {{ model.summary|lower }}"
+                    {% if model.slug == selected_slug %}selected{% endif %}>{{ model.name }}</option>
+          {% endfor %}
+        </optgroup>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label class="provider-select">
+    <select class="field-input" data-provider-select aria-label="Provider">
+      <option value="">All providers</option>
+      {% for provider in providers %}
+        <option value="{{ provider }}">{{ provider }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <span class="model-count" data-model-count>{{ models|length }} models</span>
+</div>

@@ -1,0 +1,64 @@
+{% load static %}<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  {# viewport-fit=cover lets the app paint into the notch area when installed;  #}
+  {# user-scalable=no stops iOS zooming the whole app when an input is focused. #}
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+  <title>{% block title %}{{ site_name }}{% endblock %}</title>
+
+  <meta name="theme-color" content="#0a0a14">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="{{ site_name }}">
+  <link rel="manifest" href="{% url 'manifest' %}">
+  <link rel="icon" href="{% static 'icons/icon.svg' %}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{% static 'icons/icon-192.png' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Alien+Block&family=Lexend:wght@100..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="app-body{% block body_class %}{% endblock %}">
+  <div class="aurora" aria-hidden="true">
+    <span class="aurora-blob aurora-blob-1"></span>
+    <span class="aurora-blob aurora-blob-2"></span>
+    <span class="aurora-blob aurora-blob-3"></span>
+  </div>
+
+  {% block layout %}
+    <div class="shell">
+      {% include "partials/sidebar.html" %}
+
+      <main class="main" id="main">
+        <header class="topbar glass">
+          <button class="icon-button nav-toggle" type="button" data-nav-toggle aria-label="Open navigation" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div class="topbar-title">
+            <h1>{% block page_title %}{{ site_name }}{% endblock %}</h1>
+            {% block page_subtitle %}{% endblock %}
+          </div>
+          <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+        </header>
+
+        {% if messages %}
+          <div class="flash-stack" role="status">
+            {% for message in messages %}
+              <div class="flash glass flash-{{ message.tags|default:'info' }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+    <div class="nav-scrim" data-nav-scrim hidden></div>
+  {% endblock %}
+
+  <script src="{% static 'js/app.js' %}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

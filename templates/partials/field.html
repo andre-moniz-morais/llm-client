@@ -1,0 +1,85 @@
+{% load kie %}
+{% comment %}
+One schema field. The widget is picked from the declared type: enums become
+selects, bounded numbers become sliders, long strings become textareas.
+{% endcomment %}
+{% with widget=field|widget_for id="f-"|add:field.name %}
+<div class="field">
+  {% if widget != "checkbox" %}
+    <label class="field-label" for="{{ id }}">
+      {{ field.label }}
+      {% if field.required %}<span class="req" title="Required">*</span>{% endif %}
+    </label>
+  {% endif %}
+
+  {% if widget == "select" %}
+    <select class="field-input" id="{{ id }}" name="{{ field.name }}">
+      {% if not field.required %}<option value="">Model default</option>{% endif %}
+      {% for option in field.enum %}
+        <option value="{{ option }}" {% if option == field.default %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+
+  {% elif widget == "checkbox" %}
+    <label class="checkbox">
+      <input type="checkbox" id="{{ id }}" name="{{ field.name }}" {% if field.default %}checked{% endif %}>
+      <span>{{ field.label }}</span>
+    </label>
+
+  {% elif widget == "range" %}
+    <div class="field-row">
+      <input class="field-range"
+             type="range"
+             id="{{ id }}"
+             name="{{ field.name }}"
+             min="{{ field.minimum }}"
+             max="{{ field.maximum }}"
+             step="{{ field|step_for }}"
+             value="{{ field|default_str|default:field.minimum }}"
+             data-range>
+      <output class="field-range-value" for="{{ id }}">{{ field|default_str|default:field.minimum }}</output>
+    </div>
+
+  {% elif widget == "number" %}
+    <input class="field-input"
+           type="number"
+           id="{{ id }}"
+           name="{{ field.name }}"
+           step="{{ field|step_for }}"
+           {% if field.minimum is not None %}min="{{ field.minimum }}"{% endif %}
+           {% if field.maximum is not None %}max="{{ field.maximum }}"{% endif %}
+           value="{{ field|default_str }}"
+           placeholder="{{ field.example|default:'' }}">
+
+  {% elif widget == "textarea" %}
+    <textarea class="field-input"
+              id="{{ id }}"
+              name="{{ field.name }}"
+              rows="{% if field.name == 'prompt' %}4{% else %}3{% endif %}"
+              placeholder="{{ field.example|default:''|truncatechars:120 }}"
+              {% if field.max_length %}maxlength="{{ field.max_length }}"{% endif %}
+              {% if field.required %}required{% endif %}>{{ field|default_str }}</textarea>
+    {% if field.type == "array" %}
+      <p class="field-help">One value per line.</p>
+    {% endif %}
+
+  {% elif widget == "json" %}
+    <textarea class="field-input" id="{{ id }}" name="{{ field.name }}" rows="3" placeholder="{}">{{ field|default_str }}</textarea>
+    <p class="field-help">JSON object.</p>
+
+  {% else %}
+    <input class="field-input"
+           type="text"
+           id="{{ id }}"
+           name="{{ field.name }}"
+           value="{{ field|default_str }}"
+           placeholder="{{ field.example|default:''|truncatechars:70 }}"
+           {% if field.max_length %}maxlength="{{ field.max_length }}"{% endif %}
+           {% if field.required %}required{% endif %}>
+  {% endif %}
+
+  {% if field.description %}
+    <p class="field-help">{{ field.description|truncatechars:200 }}</p>
+  {% endif %}
+</div>
+{% endwith %}

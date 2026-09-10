@@ -1,0 +1,27 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+
+# Local state that must never end up in an image.
+.env
+.env.prod
+db.sqlite3
+media/
+staticfiles/
+
+# The catalogue snapshot in apps/catalog/data is the one that ships; this is
+# just the scraper's working directory.
+.cache/
+
+# Build artefacts and editor noise.
+Dockerfile
+docker-compose*.yml
+*.md
+!README.md
+.DS_Store
+.idea
+.vscode

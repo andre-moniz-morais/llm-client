@@ -1,0 +1,75 @@
+{% load kie %}
+{% comment %}
+The parameter form for one model, generated from the OpenAPI schema
+published for it.  Required and commonly-used fields sit in the open; the rest
+go behind the advanced disclosure.
+{% endcomment %}
+
+<form method="post"
+      action="{% url 'generation:create' spec.slug %}"
+      enctype="multipart/form-data"
+      data-generate-form
+      data-slug="{{ spec.slug }}">
+  {% csrf_token %}
+
+  <div class="spec-head">
+    <h2>{{ spec.name }}</h2>
+    <div class="spec-tags">
+      <span class="pill pill-accent">{{ spec.provider }}</span>
+      <span class="pill">{{ spec.model_id }}</span>
+      {% if spec.image_field %}<span class="pill pill-ok">Accepts images</span>{% endif %}
+      {% if spec.doc_url %}
+        <a class="pill" href="{{ spec.doc_url }}" target="_blank" rel="noopener noreferrer">
+          Docs {% include "partials/icon.html" with name="external" %}
+        </a>
+      {% endif %}
+    </div>
+    {% if spec.description %}<p>{{ spec.description|truncatechars:260 }}</p>{% endif %}
+  </div>
+
+  {% for field in spec|primary_fields %}
+    {% include "partials/field.html" with field=field %}
+  {% endfor %}
+
+  {% if spec.image_field %}
+    <div class="field">
+      <label class="field-label" for="reference-images">
+        Reference images
+        <span class="muted">optional</span>
+      </label>
+      <input type="file"
+             id="reference-images"
+             name="reference_images"
+             accept="image/*"
+             multiple
+             hidden
+             data-reference-input>
+      <div class="dropzone" data-dropzone tabindex="0" role="button">
+        {% include "partials/icon.html" with name="attach" %}
+        <span data-dropzone-label>Drop images here or click to choose</span>
+      </div>
+      <div class="attach-preview" data-attach-preview></div>
+      <p class="field-help">Sent to the model as <code>{{ spec.image_field }}</code>.</p>
+    </div>
+  {% endif %}
+
+  {% with advanced=spec|advanced_fields %}
+    {% if advanced %}
+      <details class="advanced">
+        <summary>Advanced options ({{ advanced|length }})</summary>
+        <div class="advanced-body">
+          {% for field in advanced %}
+            {% include "partials/field.html" with field=field %}
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+  {% endwith %}
+
+  <div class="button-row">
+    <button class="button button-primary" type="submit" data-generate-submit>
+      {% include "partials/icon.html" with name="spark" %}
+      <span>Generate</span>
+    </button>
+  </div>
+</form>

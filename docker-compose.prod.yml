@@ -1,0 +1,54 @@
+# Production stack.
+#
+# Deliberately only the app: PostgreSQL and the S3 bucket (MinIO) are expected
+# to be containers you already run, so this joins their network and addresses
+# them by container name rather than standing up its own copies.
+#
+#   docker network ls                     # find the network they are on
+#   CRAFT_NETWORK=<that network> docker compose -f docker-compose.prod.yml up -d --build
+#
+# Configuration lives in .env.prod - copy .env.prod.example and fill it in.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: craft:latest
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      # Non-negotiable for a deployment, so they are set here rather than left
+      # to the env file where they could be forgotten.
+      DJANGO_DEBUG: "false"
+      DJANGO_STATIC_MANIFEST: "true"
+      DJANGO_TRUST_PROXY_HEADERS: "true"
+    ports:
+      # Bound to loopback: the reverse proxy in front of this reaches the
+      # container over the shared network, not through a published port. Set
+      # CRAFT_BIND=0.0.0.0 to expose it on the host's interfaces instead.
+      - "${CRAFT_BIND:-127.0.0.1}:${CRAFT_PORT:-8000}:8000"
+    volumes:
+      # Only used when no S3 bucket is configured; with AWS_STORAGE_BUCKET_NAME
+      # set, generated media goes to the bucket and this stays empty. Kept so an
+      # unconfigured deployment does not silently lose files on the next deploy.
+      - craft-media:/app/media
+    networks:
+      - infra
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  craft-media:
+
+networks:
+  infra:
+    # Already created by whatever brought up PostgreSQL and MinIO; compose only
+    # attaches to it. `external: true` makes a missing network a clear error
+    # rather than a silently-created empty one.
+    external: true
+    name: ${CRAFT_NETWORK:-infra}

@@ -1,0 +1,64 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}{{ category_label }} · {{ site_name }}{% endblock %}
+{% block page_title %}{{ category_label }}{% endblock %}
+{% block page_subtitle %}
+  <div class="subtitle">{{ models|length }} model{{ models|length|pluralize }} available</div>
+{% endblock %}
+
+{% block topbar_actions %}
+  <a class="button button-sm" href="{% url 'generation:gallery' %}?category={{ category }}">Library</a>
+{% endblock %}
+
+{% block content %}
+  {% if not has_key %}
+    <div class="flash glass flash-warning">
+      Add your API key in <a href="{% url 'accounts:settings' %}">Settings</a> before generating.
+    </div>
+  {% endif %}
+
+  {% include "partials/model_bar.html" with models=models providers=providers selected_slug=selected_slug %}
+
+  <div class="studio-layout"
+       data-studio
+       data-category="{{ category }}"
+       data-form-url="{% url 'generation:model-form' 'SLUG' %}"
+       data-status-url="{% url 'generation:status' 0 %}">
+
+    <section class="studio-form">
+      <div class="panel glass" id="model-form" data-model-form-host>
+        {% if spec %}
+          {% include "partials/model_form.html" with spec=spec category=category %}
+        {% else %}
+          <div class="empty">
+            <strong>No models available</strong>
+            <span>The model catalogue could not be reached. Try reloading.</span>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="studio-results" data-results>
+      {% for generation in generations %}
+        {% include "partials/generation.html" with generation=generation %}
+      {% empty %}
+        <div class="panel glass empty" data-results-empty>
+          <span class="empty-icon">{% include "partials/icon.html" with name=category %}</span>
+          <strong>Nothing generated yet</strong>
+          <span>Fill in the prompt and press Generate. Results appear here and stay in your library.</span>
+        </div>
+      {% endfor %}
+
+      {% if generations.has_next %}
+        <div class="pager">
+          <a class="button button-sm" href="?model={{ selected_slug }}&page={{ generations.next_page_number }}">Older results</a>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'js/studio.js' %}" defer></script>
+{% endblock %}

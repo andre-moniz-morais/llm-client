@@ -1,0 +1,12 @@
+{% extends "layout/auth.html" %}
+
+{% block title %}Offline · {{ site_name }}{% endblock %}
+
+{% block auth_content %}
+  <h1>You're offline</h1>
+  <p class="lede">
+    Every model and generation runs over the network, so this app needs a connection.
+    Your existing generations are still stored and will be here when you're back.
+  </p>
+  <button class="button button-primary" type="button" onclick="location.reload()">Try again</button>
+{% endblock %}

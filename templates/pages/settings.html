@@ -1,0 +1,161 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Settings · {{ site_name }}{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}<div class="subtitle">Credentials and notifications</div>{% endblock %}
+
+{% block content %}
+<div class="settings-grid">
+
+  <section class="panel glass">
+    <div class="panel-head">
+      <h2>Provider API key</h2>
+      <p>Required</p>
+    </div>
+
+    <div class="key-state">
+      {% if user_settings.has_kie_key %}
+        <span><span class="pill pill-ok">Connected</span> <code>{{ user_settings.masked_kie_api_key }}</code></span>
+        <form class="inline-form" method="post" action="{% url 'accounts:verify-key' %}">
+          {% csrf_token %}
+          <button class="button button-sm" type="submit">Test key</button>
+        </form>
+      {% else %}
+        <span><span class="pill pill-warn">Not set</span> Nothing will generate until you add one.</span>
+      {% endif %}
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="section" value="credentials">
+
+      {% for field in credentials_form %}
+        {% if field.name == "remove_kie_api_key" %}
+          {% if user_settings.has_kie_key %}
+            <label class="checkbox">{{ field }}<span>{{ field.label }}</span></label>
+          {% endif %}
+        {% else %}
+          <div class="field">
+            <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
+            {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+
+      <div class="button-row">
+        <button class="button button-primary" type="submit">Save key</button>
+        <a class="button button-ghost" href="https://kie.ai/api-key" target="_blank" rel="noopener noreferrer">
+          Get a key {% include "partials/icon.html" with name="external" %}
+        </a>
+      </div>
+      <p class="field-help" style="margin-top:12px">
+        Keys are encrypted before they are stored and are never sent to the browser again.
+      </p>
+    </form>
+  </section>
+
+  <section class="panel glass" data-browser-notifications>
+    <div class="panel-head">
+      <h2>Browser notifications</h2>
+      <p>Optional</p>
+    </div>
+
+    <div class="key-state">
+      {# Filled in by app.js, which is the only place that can read the grant. #}
+      <span data-notify-state><span class="pill">Checking…</span></span>
+      <button class="button button-sm" type="button" data-notify-request hidden>Allow notifications</button>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="section" value="browser">
+
+      {% for field in browser_form %}
+        <label class="checkbox">{{ field }}<span>{{ field.label }}</span></label>
+      {% endfor %}
+
+      <div class="button-row">
+        <button class="button button-primary" type="submit">Save notification settings</button>
+      </div>
+      <p class="field-help" style="margin-top:12px">
+        A notification is raised while a chat tab is open but not in front of you,
+        so a slow reply does not need watching. The browser has to grant
+        permission as well, and that grant is per browser and per device.
+      </p>
+    </form>
+  </section>
+
+  <section class="panel glass">
+    <div class="panel-head">
+      <h2>Telegram</h2>
+      <p>Optional</p>
+    </div>
+
+    <div class="key-state">
+      {% if user_settings.telegram_connected %}
+        <span><span class="pill pill-ok">Connected</span> <code>chat {{ user_settings.telegram_chat_id }}</code></span>
+        <form class="inline-form" method="post" action="{% url 'accounts:telegram-test' %}">
+          {% csrf_token %}
+          <button class="button button-sm" type="submit">Send test</button>
+        </form>
+      {% else %}
+        <span><span class="pill">Not connected</span> Get every response pushed to Telegram.</span>
+      {% endif %}
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="section" value="telegram">
+
+      {% for field in telegram_form %}
+        {% if field.name == "telegram_notifications_enabled" %}
+          <label class="checkbox">{{ field }}<span>{{ field.label }}</span></label>
+        {% elif field.name == "remove_telegram" %}
+          {% if user_settings.telegram_bot_token %}
+            <label class="checkbox">{{ field }}<span>{{ field.label }}</span></label>
+          {% endif %}
+        {% else %}
+          <div class="field">
+            <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
+            {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+
+      <div class="button-row">
+        <button class="button button-primary" type="submit">Save Telegram settings</button>
+      </div>
+    </form>
+
+    {% if user_settings.telegram_bot_token %}
+      <form method="post" action="{% url 'accounts:telegram-detect' %}" style="margin-top:10px">
+        {% csrf_token %}
+        <button class="button button-sm" type="submit">Detect chat ID</button>
+        <p class="field-help" style="margin-top:8px">
+          Message your bot on Telegram first, then press Detect to read the chat ID from its updates.
+        </p>
+      </form>
+    {% endif %}
+  </section>
+
+  <section class="panel glass">
+    <div class="panel-head">
+      <h2>How it connects</h2>
+    </div>
+    <div class="ai-html">
+      <ol>
+        <li>Create a key at <a href="https://kie.ai/api-key" target="_blank" rel="noopener noreferrer">kie.ai/api-key</a> and paste it above.</li>
+        <li>New models show up automatically — the catalogue is read from the provider's documentation each time you open a page.</li>
+        <li>For Telegram, talk to <code>@BotFather</code>, create a bot, paste its token, message the bot once, then press <strong>Detect chat ID</strong>.</li>
+      </ol>
+      <div class="callout">
+        Generated files are copied into this app's storage. The provider deletes its copies after 14 days, so yours are the lasting ones.
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
