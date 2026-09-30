@@ -8,7 +8,15 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # libpq for psycopg, and the image libraries Pillow links against at runtime.
-RUN apt-get update \
+#
+# Fetched over HTTPS with retries: over plain HTTP a caching proxy or a mirror
+# node mid-sync can hand back a stale package, which apt rejects with "Hash Sum
+# mismatch". The base image already ships ca-certificates, so HTTPS needs
+# nothing extra.
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && printf 'Acquire::Retries "5";\nAcquire::http::No-Cache "true";\nAcquire::https::No-Cache "true";\n' \
+        > /etc/apt/apt.conf.d/80-reliable-fetch \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         libpq5 \
         libjpeg62-turbo \
