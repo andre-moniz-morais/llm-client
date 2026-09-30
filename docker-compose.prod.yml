@@ -57,7 +57,7 @@ services:
       # Bound to loopback: the reverse proxy in front of this reaches the
       # container over the shared network, not through a published port. Set
       # CRAFT_BIND=0.0.0.0 to expose it on the host's interfaces instead.
-      - "${CRAFT_BIND:-127.0.0.1}:${CRAFT_PORT:-8000}:8000"
+      - "${CRAFT_BIND:-127.0.0.1}:${CRAFT_PORT:-8087}:8000"
     depends_on:
       redis:
         condition: service_healthy

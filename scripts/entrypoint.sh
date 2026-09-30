@@ -6,8 +6,8 @@
 # image (see docker-compose.prod.yml).
 set -eu
 
-# Checked before anything else: settings refuse to load without it, and that
-# would otherwise surface as a minute of "waiting for the database".
+# Checked before anything else: settings refuse to load without it, and the
+# resulting error would otherwise look like a database problem.
 if [ "${DJANGO_DEBUG:-true}" = "false" ] && [ -z "${CREDENTIALS_ENCRYPTION_KEY:-}" ]; then
     echo "CREDENTIALS_ENCRYPTION_KEY is not set. Generate one with:" >&2
     echo "  python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"" >&2
@@ -16,19 +16,9 @@ fi
 
 # The database lives in a container this compose file does not own, so it may
 # still be starting up. Give it a bounded number of tries rather than crash-
-# looping the app container.
+# looping the app container; each failed try logs the driver's reason.
 if [ "${CRAFT_WAIT_FOR_DB:-true}" = "true" ]; then
-    attempt=1
-    until python manage.py check --database default >/dev/null 2>&1; do
-        if [ "$attempt" -ge "${CRAFT_DB_WAIT_TRIES:-30}" ]; then
-            echo "Database not reachable after $attempt attempts; giving up." >&2
-            python manage.py check --database default   # print the real error
-            exit 1
-        fi
-        echo "Waiting for the database (attempt $attempt)..."
-        attempt=$((attempt + 1))
-        sleep 2
-    done
+    python manage.py wait_for_db --tries "${CRAFT_DB_WAIT_TRIES:-30}"
 fi
 
 if [ "${CRAFT_MIGRATE_ON_START:-true}" = "true" ]; then
