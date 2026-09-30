@@ -84,6 +84,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 # pointless against SQLite, so only the PostgreSQL branches below set them.
 DB_CONN_MAX_AGE = int(os.environ.get("DJANGO_DB_CONN_MAX_AGE", "60"))
 
+# Seconds to wait for PostgreSQL to answer a new connection. Without a limit,
+# a host that drops packets (wrong network, firewall) hangs each attempt for
+# the OS's TCP timeout, so a startup wait of 30 tries takes a quarter of an
+# hour before it reports anything.
+DB_CONNECT_TIMEOUT = int(os.environ.get("DJANGO_DB_CONNECT_TIMEOUT", "5"))
+
 
 def _database_config() -> dict:
     """SQLite for a checkout, PostgreSQL for a deployment.
@@ -107,6 +113,7 @@ def _database_config() -> dict:
             "PORT": str(parts.port or ""),
             "CONN_MAX_AGE": DB_CONN_MAX_AGE,
             "CONN_HEALTH_CHECKS": True,
+            "OPTIONS": {"connect_timeout": DB_CONNECT_TIMEOUT},
         }
 
     if os.environ.get("DJANGO_DB_HOST"):
@@ -119,6 +126,7 @@ def _database_config() -> dict:
             "PORT": os.environ.get("DJANGO_DB_PORT", "5432"),
             "CONN_MAX_AGE": DB_CONN_MAX_AGE,
             "CONN_HEALTH_CHECKS": True,
+            "OPTIONS": {"connect_timeout": DB_CONNECT_TIMEOUT},
         }
 
     return {
