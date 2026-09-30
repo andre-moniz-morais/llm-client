@@ -13,3 +13,6 @@ whitenoise>=6.7
 psycopg[binary]>=3.2
 django-storages[s3]>=1.14
 gunicorn>=23.0
+
+# Background work: chat turns and generation polling, with Redis as the broker.
+celery[redis]>=5.4

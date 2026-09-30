@@ -1,49 +1,140 @@
 # Production stack.
 #
-# Deliberately only the app: PostgreSQL and the S3 bucket (MinIO) are expected
-# to be containers you already run, so this joins their network and addresses
-# them by container name rather than standing up its own copies.
+# PostgreSQL and the S3 bucket (MinIO) are expected to be containers you
+# already run, so this joins their network and addresses them by container
+# name rather than standing up its own copies. Redis is the exception: it only
+# carries this app's task queue, so it lives here, on a private network.
+#
+#   web     - gunicorn; records chat turns and generations, serves the pages
+#   worker  - Celery; runs the model calls and stores generated files
+#   beat    - Celery beat; polls running generations every few seconds
+#   redis   - the broker between them
 #
 #   docker network ls                     # find the network they are on
 #   CRAFT_NETWORK=<that network> docker compose -f docker-compose.prod.yml up -d --build
 #
 # Configuration lives in .env.prod - copy .env.prod.example and fill it in.
 
+x-app: &app
+  image: craft:latest
+  restart: unless-stopped
+  env_file:
+    - .env.prod
+  environment: &app-environment
+    # Non-negotiable for a deployment, so they are set here rather than left
+    # to the env file where they could be forgotten.
+    DJANGO_DEBUG: "false"
+    DJANGO_STATIC_MANIFEST: "true"
+    DJANGO_TRUST_PROXY_HEADERS: "true"
+    # Setting a broker is what moves model calls off the web container.
+    CELERY_BROKER_URL: redis://redis:6379/0
+  volumes:
+    # Only used when no S3 bucket is configured; with AWS_STORAGE_BUCKET_NAME
+    # set, generated media goes to the bucket and this stays empty. Kept so an
+    # unconfigured deployment does not silently lose files on the next deploy.
+    # The worker writes generated files, so it needs the same volume as web.
+    - craft-media:/app/media
+  networks:
+    - infra
+    - craft
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   web:
+    <<: *app
     build:
       context: .
       dockerfile: Dockerfile
-    image: craft:latest
-    restart: unless-stopped
-    env_file:
-      - .env.prod
-    environment:
-      # Non-negotiable for a deployment, so they are set here rather than left
-      # to the env file where they could be forgotten.
-      DJANGO_DEBUG: "false"
-      DJANGO_STATIC_MANIFEST: "true"
-      DJANGO_TRUST_PROXY_HEADERS: "true"
     ports:
       # Bound to loopback: the reverse proxy in front of this reaches the
       # container over the shared network, not through a published port. Set
       # CRAFT_BIND=0.0.0.0 to expose it on the host's interfaces instead.
       - "${CRAFT_BIND:-127.0.0.1}:${CRAFT_PORT:-8000}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    environment:
+      <<: *app-environment
+      # web applies migrations; two containers racing to do it is asking for
+      # trouble, so the worker waits for web to be healthy instead.
+      CRAFT_MIGRATE_ON_START: "false"
+    # Prefork rather than threads: only prefork enforces the task time limits
+    # that stop a hung model call from holding a slot forever.
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - --loglevel=INFO
+      - --concurrency=${CELERY_CONCURRENCY:-4}
+      - --max-tasks-per-child=200
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination celery@$$HOSTNAME --timeout 10 >/dev/null"]
+      interval: 60s
+      timeout: 20s
+      start_period: 30s
+      retries: 3
+    # Long model calls should finish rather than be cut off by a redeploy;
+    # anything still running after this is re-queued (acks_late).
+    stop_grace_period: 2m
+    depends_on:
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  beat:
+    <<: *app
+    environment:
+      <<: *app-environment
+      CRAFT_MIGRATE_ON_START: "false"
+    # The schedule file goes to /tmp: the app directory is not writable by the
+    # unprivileged user, and the schedule is rebuilt from settings on start.
+    # Run exactly one of these - two would poll every generation twice.
+    command:
+      - celery
+      - -A
+      - config
+      - beat
+      - --loglevel=INFO
+      - --schedule=/tmp/celerybeat-schedule
+    # The image's healthcheck probes gunicorn, which beat does not run.
+    healthcheck:
+      disable: true
+    volumes: []
+    depends_on:
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Append-only, so queued chat turns survive a Redis restart. Not published
+    # and only on the private network, so it needs no password.
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
     volumes:
-      # Only used when no S3 bucket is configured; with AWS_STORAGE_BUCKET_NAME
-      # set, generated media goes to the bucket and this stays empty. Kept so an
-      # unconfigured deployment does not silently lose files on the next deploy.
-      - craft-media:/app/media
+      - craft-redis:/data
     networks:
-      - infra
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - craft
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
 
 volumes:
   craft-media:
+  craft-redis:
 
 networks:
   infra:
@@ -52,3 +143,6 @@ networks:
     # rather than a silently-created empty one.
     external: true
     name: ${CRAFT_NETWORK:-infra}
+  # Private to this stack: nothing else on the shared network can reach Redis.
+  craft:
+    internal: true

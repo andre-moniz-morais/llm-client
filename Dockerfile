@@ -34,6 +34,7 @@ RUN chmod +x /app/scripts/entrypoint.sh
 ENV DJANGO_STATIC_MANIFEST=true
 RUN DJANGO_DEBUG=false \
     DJANGO_SECRET_KEY=build-time-only \
+    CREDENTIALS_ENCRYPTION_KEY=build-time-only \
     python manage.py collectstatic --noinput --clear
 
 # Drop privileges. Done after collectstatic so the build can write staticfiles.

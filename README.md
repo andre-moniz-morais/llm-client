@@ -114,7 +114,9 @@ Two independent channels, both per-user on the Settings page:
   of the switch; the browser's own permission grant is the other, and that is
   per browser and per device, which is why Settings asks for it separately.
 - **Telegram** — connect a bot and every completed chat reply and generation is
-  pushed to your chat. This one works with no browser open at all.
+  pushed to your chat. This one works with no browser open at all. Paste the
+  bot token, open the bot and press **Start**; the chat is picked up on save
+  (or with **Detect chat ID** afterwards) and a confirmation is sent.
 
 ## Deployment
 
@@ -151,7 +153,9 @@ meant to be publicly readable. Create the bucket first — the app does not.
 
 ### Containers
 
-`docker-compose.prod.yml` runs the app and nothing else: PostgreSQL and MinIO
+`docker-compose.prod.yml` runs the app: `web` (gunicorn), `worker` (Celery,
+which makes the model calls and stores generated files), `beat` (which polls
+running generations) and a private `redis` as the broker. PostgreSQL and MinIO
 are expected to be containers you already run, so the app joins their network
 and addresses them by container name.
 
@@ -171,17 +175,30 @@ CRAFT_NETWORK=infra docker compose -f docker-compose.prod.yml up -d --build
 The image runs `collectstatic` at build time and serves the hashed assets
 through WhiteNoise, so no separate web server is needed for static files. On
 start the entrypoint waits for the database, applies migrations, then runs
-gunicorn. `/healthz` answers the container healthcheck without touching the
-database.
+gunicorn; `worker` and `beat` use the same image and wait for `web` to be
+healthy, so migrations run exactly once. `/healthz` answers the container
+healthcheck without touching the database.
+
+`CREDENTIALS_ENCRYPTION_KEY` is required in production: web and worker are
+separate processes and must decrypt the same stored keys.
+
+### Background work
+
+With `CELERY_BROKER_URL` set, a chat message is stored with a pending reply
+and the worker fills it in while the page polls, so no web request waits on a
+model. Generations are polled by `beat` every `GENERATION_POLL_SECONDS` (10),
+so results are stored and Telegram notified with no tab open. Without a broker
+(local development, the tests) the same tasks run inline in the request.
 
 Two details worth knowing if you put your own proxy in front:
 
 - The compose file sets `DJANGO_TRUST_PROXY_HEADERS=true`, which tells Django to
   read the original scheme from `X-Forwarded-Proto`. Without it, the
   HTTPS redirect loops forever behind a proxy that terminates TLS.
-- Model calls are synchronous and can legitimately run for minutes, so the
-  gunicorn worker timeout defaults to 180s — above `KIE_REQUEST_TIMEOUT`. Raise
-  both together, never just one.
+- Model calls can legitimately run for minutes. With the worker they are out of
+  the request path, but the Celery task time limit derives from
+  `KIE_REQUEST_TIMEOUT`, and without a broker gunicorn's 180s timeout must stay
+  above it. Raise them together, never just one.
 
 ## API
 

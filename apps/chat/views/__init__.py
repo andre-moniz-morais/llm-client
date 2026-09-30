@@ -1,5 +1,5 @@
 from .api import ConversationViewSet, MessageViewSet
-from .pages import archive, conversation_detail, index, send
+from .pages import archive, conversation_detail, index, message_status, send
 
 __all__ = [
     "ConversationViewSet",
@@ -7,5 +7,6 @@ __all__ = [
     "archive",
     "conversation_detail",
     "index",
+    "message_status",
     "send",
 ]

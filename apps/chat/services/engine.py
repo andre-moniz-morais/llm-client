@@ -1,6 +1,11 @@
 """Running a chat turn: build history, call KIE, store and notify.
 
-The frontend renders whatever HTML this returns, so a failure has to come back
+A turn is split in two. :func:`send_message` runs in the request: it stores the
+question and a pending reply and queues the model call. :func:`complete_turn`
+runs on the Celery worker and fills that reply in, so a slow model never holds
+a web worker. The page polls the pending reply until it resolves.
+
+The frontend renders whatever HTML this stores, so a failure has to come back
 as a styled fragment rather than an exception escaping to a 500 page.
 """
 
@@ -13,7 +18,7 @@ from django.db import transaction
 
 from apps.catalog.services import catalog
 from apps.common.services import html as html_service
-from apps.common.services import kie, telegram
+from apps.common.services import kie, queue, telegram
 from apps.chat.models import Attachment, Conversation, Message
 
 from . import protocols
@@ -129,6 +134,34 @@ def send_message(
         pk__in=[item["id"] for item in attachments], message__isnull=True
     ).update(message=question)
 
+    answer = Message.objects.create(
+        conversation=conversation,
+        role=Message.Role.ASSISTANT,
+        status=Message.Status.PENDING,
+    )
+
+    from apps.chat import tasks
+
+    queue.enqueue(tasks.complete_turn, answer.pk)
+    # Without a worker the task already ran; with one this is still pending.
+    answer.refresh_from_db()
+    return question, answer
+
+
+def complete_turn(answer: Message) -> Message:
+    """Ask the model for the pending reply ``answer`` and store the outcome."""
+    if not answer.is_pending:
+        # A redelivered task, or one that lost the race with the timeout.
+        return answer
+
+    conversation = answer.conversation
+    user = conversation.user
+
+    spec = catalog.spec(conversation.model_slug)
+    if spec is None:
+        return fail_turn(answer, "That model is no longer listed in the catalogue. Pick another one.")
+
+    # The pending reply itself is excluded: history only replays complete turns.
     turns = build_history(conversation)
     body = protocols.build_request(spec, turns, html_service.CHAT_SYSTEM_PROMPT)
 
@@ -136,39 +169,39 @@ def send_message(
         client = kie.client_for(user)
         payload = client.chat(spec.create_path, body)
     except kie.KieError as exc:
-        answer = Message.objects.create(
-            conversation=conversation,
-            role=Message.Role.ASSISTANT,
-            content="",
-            content_html=html_service.error_fragment(exc.message),
-            status=Message.Status.FAILED,
-            error=exc.message,
-        )
-        return question, answer
+        return fail_turn(answer, exc.message)
 
     reply = protocols.read_reply(spec, payload)
     if not reply:
-        message = "The model returned an empty response. Try again or pick another model."
-        answer = Message.objects.create(
-            conversation=conversation,
-            role=Message.Role.ASSISTANT,
-            content="",
-            content_html=html_service.error_fragment(message),
-            status=Message.Status.FAILED,
-            error=message,
+        return fail_turn(
+            answer, "The model returned an empty response. Try again or pick another model."
         )
-        return question, answer
 
-    answer = Message.objects.create(
-        conversation=conversation,
-        role=Message.Role.ASSISTANT,
-        content=reply,
-        content_html=html_service.fragment(html_service.normalize_reply(reply)),
-        usage=protocols.read_usage(payload),
-    )
+    answer.content = reply
+    answer.content_html = html_service.fragment(html_service.normalize_reply(reply))
+    answer.usage = protocols.read_usage(payload)
+    answer.status = Message.Status.COMPLETE
+    answer.save(update_fields=["content", "content_html", "usage", "status"])
     conversation.touch()
     notify(user, conversation, answer)
-    return question, answer
+    return answer
+
+
+def fail_turn(answer: Message, message: str) -> Message:
+    """Resolve a pending reply as failed, keeping it visible in the thread."""
+    answer.content = ""
+    answer.content_html = html_service.error_fragment(message)
+    answer.status = Message.Status.FAILED
+    answer.error = message
+    answer.save(update_fields=["content", "content_html", "status", "error"])
+    return answer
+
+
+def expire_if_stale(answer: Message) -> Message:
+    """Give up on a reply the worker never delivered, so the page stops waiting."""
+    if answer.is_stale:
+        return fail_turn(answer, "The reply did not arrive in time. Try sending again.")
+    return answer
 
 
 def notify(user, conversation: Conversation, answer: Message) -> None:

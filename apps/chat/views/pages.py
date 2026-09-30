@@ -9,7 +9,7 @@ from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 
 from apps.catalog.services import catalog
-from apps.chat.models import Conversation
+from apps.chat.models import Conversation, Message
 from apps.chat.services import engine
 from apps.common.services import html as html_service
 from apps.common.services import kie
@@ -128,6 +128,25 @@ def conversation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     )
     response = _fragment_response(html)
     response["X-Conversation-Model"] = conversation.model_slug
+    return response
+
+
+@login_required
+def message_status(request: HttpRequest, pk: int) -> HttpResponse:
+    """One message, re-rendered, for the page waiting on a pending reply."""
+    message = get_object_or_404(
+        Message.objects.select_related("conversation"),
+        pk=pk,
+        conversation__user=request.user,
+    )
+    message = engine.expire_if_stale(message)
+    html = render_to_string(
+        "partials/messages.html",
+        {"messages_list": [message], "conversation": message.conversation},
+        request=request,
+    )
+    response = _fragment_response(html)
+    response["X-Message-Status"] = str(message.status)
     return response
 
 

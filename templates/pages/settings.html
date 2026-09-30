@@ -95,10 +95,27 @@
 
     <div class="key-state">
       {% if user_settings.telegram_connected %}
-        <span><span class="pill pill-ok">Connected</span> <code>chat {{ user_settings.telegram_chat_id }}</code></span>
+        <span>
+          <span class="pill pill-ok">Connected</span>
+          {% if user_settings.telegram_bot_username %}<code>@{{ user_settings.telegram_bot_username }}</code>{% endif %}
+          <code>chat {{ user_settings.telegram_chat_id }}</code>
+        </span>
         <form class="inline-form" method="post" action="{% url 'accounts:telegram-test' %}">
           {% csrf_token %}
           <button class="button button-sm" type="submit">Send test</button>
+        </form>
+      {% elif user_settings.telegram_awaiting_chat %}
+        <span>
+          <span class="pill pill-warn">Waiting for Start</span>
+          {% if user_settings.telegram_bot_link %}
+            Open <a href="{{ user_settings.telegram_bot_link }}" target="_blank" rel="noopener noreferrer">@{{ user_settings.telegram_bot_username }}</a>, press Start, then Detect.
+          {% else %}
+            Message your bot on Telegram, then Detect.
+          {% endif %}
+        </span>
+        <form class="inline-form" method="post" action="{% url 'accounts:telegram-detect' %}">
+          {% csrf_token %}
+          <button class="button button-sm button-primary" type="submit">Detect chat ID</button>
         </form>
       {% else %}
         <span><span class="pill">Not connected</span> Get every response pushed to Telegram.</span>
@@ -113,7 +130,7 @@
         {% if field.name == "telegram_notifications_enabled" %}
           <label class="checkbox">{{ field }}<span>{{ field.label }}</span></label>
         {% elif field.name == "remove_telegram" %}
-          {% if user_settings.telegram_bot_token %}
+          {% if user_settings.telegram_bot_token_encrypted %}
             <label class="checkbox">{{ field }}<span>{{ field.label }}</span></label>
           {% endif %}
         {% else %}
@@ -131,13 +148,10 @@
       </div>
     </form>
 
-    {% if user_settings.telegram_bot_token %}
+    {% if user_settings.telegram_connected %}
       <form method="post" action="{% url 'accounts:telegram-detect' %}" style="margin-top:10px">
         {% csrf_token %}
-        <button class="button button-sm" type="submit">Detect chat ID</button>
-        <p class="field-help" style="margin-top:8px">
-          Message your bot on Telegram first, then press Detect to read the chat ID from its updates.
-        </p>
+        <button class="button button-sm button-ghost" type="submit">Detect chat ID again</button>
       </form>
     {% endif %}
   </section>
@@ -150,7 +164,7 @@
       <ol>
         <li>Create a key at <a href="https://kie.ai/api-key" target="_blank" rel="noopener noreferrer">kie.ai/api-key</a> and paste it above.</li>
         <li>New models show up automatically — the catalogue is read from the provider's documentation each time you open a page.</li>
-        <li>For Telegram, talk to <code>@BotFather</code>, create a bot, paste its token, message the bot once, then press <strong>Detect chat ID</strong>.</li>
+        <li>For Telegram, talk to <code>@BotFather</code>, create a bot and paste its token. Open the bot and press <strong>Start</strong>. If you did that before saving, it connects straight away. If not, press <strong>Detect chat ID</strong> afterwards.</li>
       </ol>
       <div class="callout">
         Generated files are copied into this app's storage. The provider deletes its copies after 14 days, so yours are the lasting ones.

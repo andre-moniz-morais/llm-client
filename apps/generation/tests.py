@@ -6,7 +6,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.http import QueryDict
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.catalog.services.docs import ModelSpec
 from apps.generation.models import Generation
@@ -270,3 +270,52 @@ class GenerationFlowTests(TestCase):
             engine.refresh(generation)
 
         client_for.assert_not_called()
+
+
+class BackgroundPollingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("gus", password="pw-for-testing-1")
+
+    def _generation(self, status=Generation.Status.RUNNING):
+        return Generation.objects.create(
+            user=self.user, category="image", model_slug="x", adapter="jobs",
+            task_id="task-1", status=status,
+        )
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=False)
+    def test_with_a_worker_the_page_does_not_poll_kie_itself(self):
+        generation = self._generation()
+
+        with mock.patch("apps.generation.services.engine.kie.client_for") as client_for:
+            engine.check(generation)
+
+        client_for.assert_not_called()
+
+    def test_without_a_worker_the_page_drives_polling(self):
+        generation = self._generation()
+
+        with mock.patch("apps.generation.services.engine.refresh") as refresh:
+            engine.check(generation)
+
+        refresh.assert_called_once_with(generation)
+
+    def test_the_sweep_polls_only_unfinished_generations(self):
+        from apps.generation import tasks
+
+        running = self._generation()
+        self._generation(status=Generation.Status.SUCCEEDED)
+
+        with mock.patch.object(tasks.poll, "apply_async") as queued:
+            self.assertEqual(tasks.poll_running(), 1)
+
+        queued.assert_called_once_with(args=[running.pk], expires=60)
+
+    def test_a_poll_refreshes_the_generation(self):
+        from apps.generation import tasks
+
+        generation = self._generation()
+
+        with mock.patch("apps.generation.services.engine.refresh") as refresh:
+            tasks.poll(generation.pk)
+
+        self.assertEqual(refresh.call_args.args[0].pk, generation.pk)

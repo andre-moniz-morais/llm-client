@@ -3,6 +3,7 @@
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management.utils import get_random_secret_key
 from dotenv import load_dotenv
 import os
@@ -250,8 +251,51 @@ CATALOG_SPEC_TTL = int(os.environ.get("CATALOG_SPEC_TTL", str(24 * 60 * 60)))
 # unset, which means stored keys become unreadable when the process restarts -
 # fine for a local trial, not for a deployment.
 CREDENTIALS_ENCRYPTION_KEY = os.environ.get("CREDENTIALS_ENCRYPTION_KEY", "")
+if not DEBUG and not CREDENTIALS_ENCRYPTION_KEY.strip():
+    # A per-process key is not merely lost on restart: every gunicorn worker
+    # and the Celery worker would each hold a different one, so a secret saved
+    # by one process reads as empty in the others.
+    raise ImproperlyConfigured(
+        "CREDENTIALS_ENCRYPTION_KEY must be set when DJANGO_DEBUG is false."
+    )
 
 TELEGRAM_API_BASE = os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org")
+
+# How long a chat reply may stay pending before the page gives up on it: long
+# enough for a slow model plus a queue, short enough that a lost task is noticed.
+CHAT_TIMEOUT_SECONDS = int(os.environ.get("CHAT_TIMEOUT_SECONDS", str(KIE_REQUEST_TIMEOUT * 3)))
+
+# --------------------------------------------------------------------------- #
+# Background work (Celery)
+# --------------------------------------------------------------------------- #
+
+# Unset means no worker: tasks run inline in the request, exactly as before,
+# and the browser's polling drives generations forward.
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "")
+CELERY_TASK_ALWAYS_EAGER = not CELERY_BROKER_URL
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# Results live in the database rows the tasks update, never in Celery.
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TIMEZONE = TIME_ZONE
+
+# Model calls are long and few: take one at a time, and acknowledge only once
+# done so a worker killed mid-call hands the task back rather than losing it.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_SOFT_TIME_LIMIT = KIE_REQUEST_TIMEOUT + 60
+CELERY_TASK_TIME_LIMIT = KIE_REQUEST_TIMEOUT + 90
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+CELERY_BEAT_SCHEDULE = {
+    "poll-running-generations": {
+        "task": "apps.generation.tasks.poll_running",
+        "schedule": float(os.environ.get("GENERATION_POLL_SECONDS", "10")),
+        # A sweep that could not run in time is replaced by the next one.
+        "options": {"expires": 30},
+    },
+}
 
 # --------------------------------------------------------------------------- #
 # Security

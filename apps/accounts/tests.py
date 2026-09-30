@@ -12,6 +12,7 @@ from django.urls import reverse
 from apps.accounts.models import UserSettings
 from apps.catalog.services.docs import ModelRef, ModelSpec
 from apps.chat.models import Conversation
+from apps.common.services import telegram
 from apps.generation.models import Generation
 
 User = get_user_model()
@@ -177,6 +178,91 @@ class BrowserNotificationSettingTests(TestCase):
         self.user.settings.refresh_from_db()
         self.assertEqual(self.user.settings.telegram_chat_id, "12345")
         self.assertTrue(self.user.settings.telegram_notifications_enabled)
+
+
+class TelegramSettingTests(TestCase):
+    """Saving a token should end connected, or say exactly what is missing."""
+
+    BOT = {"id": 42, "username": "craft_test_bot"}
+
+    def setUp(self):
+        self.user = User.objects.create_user("fay", password="a-strong-passphrase-42")
+        self.client.force_login(self.user)
+
+    def save_token(self, token="123:abc", **extra):
+        return self.client.post(
+            reverse("accounts:settings"),
+            {"section": "telegram", "telegram_bot_token": token,
+             "telegram_notifications_enabled": "on", **extra},
+            follow=True,
+        )
+
+    @mock.patch("apps.common.services.telegram.send_message", return_value=True)
+    @mock.patch("apps.common.services.telegram.resolve_chat_id", return_value="777")
+    @mock.patch("apps.common.services.telegram.describe_bot", return_value=BOT)
+    def test_a_token_saved_after_pressing_start_connects_immediately(self, _bot, _chat, send):
+        response = self.save_token()
+
+        self.user.settings.refresh_from_db()
+        self.assertTrue(self.user.settings.telegram_connected)
+        self.assertTrue(self.user.settings.telegram_active)
+        self.assertEqual(self.user.settings.telegram_chat_id, "777")
+        self.assertEqual(self.user.settings.telegram_bot_username, "craft_test_bot")
+        send.assert_called_once()
+        self.assertContains(response, "Connected to @craft_test_bot")
+
+    @mock.patch("apps.common.services.telegram.send_message", return_value=True)
+    @mock.patch(
+        "apps.common.services.telegram.resolve_chat_id",
+        side_effect=telegram.TelegramError("No conversation found yet."),
+    )
+    @mock.patch("apps.common.services.telegram.describe_bot", return_value=BOT)
+    def test_a_token_without_a_chat_waits_and_links_to_the_bot(self, _bot, _chat, send):
+        response = self.save_token()
+
+        self.user.settings.refresh_from_db()
+        self.assertTrue(self.user.settings.telegram_awaiting_chat)
+        self.assertFalse(self.user.settings.telegram_connected)
+        send.assert_not_called()
+        self.assertContains(response, "Waiting for Start")
+        self.assertContains(response, "https://t.me/craft_test_bot")
+
+    @mock.patch(
+        "apps.common.services.telegram.describe_bot",
+        side_effect=telegram.TelegramError("Unauthorized"),
+    )
+    def test_an_invalid_token_is_rejected_and_not_stored(self, _bot):
+        response = self.save_token("nope")
+
+        self.assertContains(response, "Unauthorized")
+        self.user.settings.refresh_from_db()
+        self.assertEqual(self.user.settings.telegram_bot_token_encrypted, "")
+
+    @mock.patch("apps.common.services.telegram.send_message", return_value=True)
+    @mock.patch("apps.common.services.telegram.resolve_chat_id", return_value="888")
+    @mock.patch("apps.common.services.telegram.describe_bot", return_value=BOT)
+    def test_a_new_token_drops_the_old_bots_chat(self, _bot, _chat, _send):
+        self.user.settings.telegram_bot_token = "old:token"
+        self.user.settings.telegram_chat_id = "111"
+        self.user.settings.save()
+
+        self.save_token("123:new", telegram_chat_id="111")
+
+        self.user.settings.refresh_from_db()
+        self.assertEqual(self.user.settings.telegram_chat_id, "888")
+
+    @mock.patch("apps.common.services.telegram.send_message", return_value=True)
+    @mock.patch("apps.common.services.telegram.resolve_chat_id", return_value="999")
+    def test_detect_connects_a_waiting_bot(self, _chat, send):
+        self.user.settings.telegram_bot_token = "123:abc"
+        self.user.settings.telegram_bot_username = "craft_test_bot"
+        self.user.settings.save()
+
+        self.client.post(reverse("accounts:telegram-detect"))
+
+        self.user.settings.refresh_from_db()
+        self.assertEqual(self.user.settings.telegram_chat_id, "999")
+        send.assert_called_once()
 
 
 class HealthCheckTests(TestCase):

@@ -6,7 +6,8 @@ import contextlib
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.urls import reverse
 
 from apps.catalog.services.docs import ModelSpec
 from apps.chat.models import Conversation, Message
@@ -239,3 +240,101 @@ class SendMessageTests(TestCase):
 
         turns = engine.build_history(self.conversation)
         self.assertEqual([turn.text for turn in turns], ["First", "Second"])
+
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False)
+class BackgroundTurnTests(TestCase):
+    """With a worker configured, the request only records the turn."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("bea", password="pw-for-testing-1")
+        self.conversation = Conversation.objects.create(
+            user=self.user, model_slug="test-model", model_name="Test model"
+        )
+        self.client.force_login(self.user)
+
+    def _spec(self):
+        return mock.patch(
+            "apps.chat.services.engine.catalog.spec", return_value=spec_for("chat_openai")
+        )
+
+    def test_the_reply_is_left_pending_and_queued_after_commit(self):
+        from apps.chat import tasks
+
+        with (
+            self._spec(),
+            mock.patch.object(tasks.complete_turn, "apply_async") as queued,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            _, answer = engine.send_message(
+                user=self.user, conversation=self.conversation, text="Hello"
+            )
+
+        self.assertEqual(answer.status, Message.Status.PENDING)
+        queued.assert_called_once_with(args=(answer.pk,))
+
+    def test_the_worker_fills_in_the_pending_reply(self):
+        from apps.chat import tasks
+
+        Message.objects.create(
+            conversation=self.conversation, role=Message.Role.USER, content="Hello"
+        )
+        answer = Message.objects.create(
+            conversation=self.conversation,
+            role=Message.Role.ASSISTANT,
+            status=Message.Status.PENDING,
+        )
+        client = mock.Mock()
+        client.chat.return_value = {"choices": [{"message": {"content": "Hi there"}}]}
+
+        with self._spec(), mock.patch(
+            "apps.chat.services.engine.kie.client_for", return_value=client
+        ):
+            tasks.complete_turn(answer.pk)
+
+        answer.refresh_from_db()
+        self.assertEqual(answer.status, Message.Status.COMPLETE)
+        self.assertEqual(answer.content, "Hi there")
+        # The pending reply is not replayed to the model as an empty turn.
+        sent = client.chat.call_args.args[1]["messages"]
+        self.assertEqual([turn["role"] for turn in sent if turn["role"] != "system"], ["user"])
+
+    def test_the_page_polls_a_pending_reply_until_it_resolves(self):
+        answer = Message.objects.create(
+            conversation=self.conversation,
+            role=Message.Role.ASSISTANT,
+            status=Message.Status.PENDING,
+        )
+        url = reverse("chat:message-status", args=[answer.pk])
+
+        response = self.client.get(url)
+        self.assertEqual(response["X-Message-Status"], "pending")
+        self.assertContains(response, f'data-poll-url="{url}"')
+
+        engine.fail_turn(answer, "Nope")
+        response = self.client.get(url)
+        self.assertEqual(response["X-Message-Status"], "failed")
+        self.assertNotContains(response, "data-poll-url")
+
+    @override_settings(CHAT_TIMEOUT_SECONDS=0)
+    def test_a_reply_the_worker_never_delivered_expires(self):
+        answer = Message.objects.create(
+            conversation=self.conversation,
+            role=Message.Role.ASSISTANT,
+            status=Message.Status.PENDING,
+        )
+
+        response = self.client.get(reverse("chat:message-status", args=[answer.pk]))
+
+        self.assertEqual(response["X-Message-Status"], "failed")
+        self.assertContains(response, "did not arrive in time")
+
+    def test_another_users_reply_is_not_visible(self):
+        other = User.objects.create_user("cal", password="pw-for-testing-1")
+        self.client.force_login(other)
+        answer = Message.objects.create(
+            conversation=self.conversation, role=Message.Role.ASSISTANT, content="secret"
+        )
+
+        response = self.client.get(reverse("chat:message-status", args=[answer.pk]))
+        self.assertEqual(response.status_code, 404)

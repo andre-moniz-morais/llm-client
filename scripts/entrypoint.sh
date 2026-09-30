@@ -1,6 +1,18 @@
 #!/bin/sh
 # Container entrypoint: bring the schema up to date, then serve.
+#
+# With arguments it runs those instead of the web server, after the same
+# database wait - that is how the worker and beat containers start from this
+# image (see docker-compose.prod.yml).
 set -eu
+
+# Checked before anything else: settings refuse to load without it, and that
+# would otherwise surface as a minute of "waiting for the database".
+if [ "${DJANGO_DEBUG:-true}" = "false" ] && [ -z "${CREDENTIALS_ENCRYPTION_KEY:-}" ]; then
+    echo "CREDENTIALS_ENCRYPTION_KEY is not set. Generate one with:" >&2
+    echo "  python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"" >&2
+    exit 1
+fi
 
 # The database lives in a container this compose file does not own, so it may
 # still be starting up. Give it a bounded number of tries rather than crash-
@@ -22,6 +34,10 @@ fi
 if [ "${CRAFT_MIGRATE_ON_START:-true}" = "true" ]; then
     echo "Applying migrations..."
     python manage.py migrate --noinput
+fi
+
+if [ "$#" -gt 0 ]; then
+    exec "$@"
 fi
 
 # Model calls are synchronous and can legitimately run for minutes, so the

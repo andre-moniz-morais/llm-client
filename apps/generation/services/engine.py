@@ -1,9 +1,10 @@
 """Starting, polling and storing generations.
 
 KIE generation is asynchronous everywhere: a request returns a task id and the
-result arrives later.  The frontend polls :func:`refresh` until the task
-finishes, at which point the produced files are downloaded into local storage -
-KIE deletes them after 14 days.
+result arrives later.  :func:`refresh` asks KIE once; when the task finishes the
+produced files are downloaded into local storage - KIE deletes them after 14
+days.  With a Celery worker, beat calls it for every running task; without one,
+the page's own polling does (see :func:`check`).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import mimetypes
 from urllib.parse import urlparse
 
 import requests
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 
@@ -80,6 +82,17 @@ def start(*, user, spec: ModelSpec, form_data: dict, files=None) -> Generation:
     generation.task_id = task_id
     generation.status = Generation.Status.RUNNING
     generation.save(update_fields=["task_id", "status", "updated_at"])
+    return generation
+
+
+def check(generation: Generation) -> Generation:
+    """Bring a generation up to date for a page that is watching it.
+
+    With a worker the page only reads what the worker stored: polling KIE from
+    both sides would race to download the same files.
+    """
+    if settings.CELERY_TASK_ALWAYS_EAGER:
+        return refresh(generation)
     return generation
 
 

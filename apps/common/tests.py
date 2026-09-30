@@ -179,3 +179,46 @@ class DatabaseConfigTests(TestCase):
         config = self._config(DATABASE_URL="postgresql://a:b@db:5432/craftdb")
         self.assertTrue(config["CONN_HEALTH_CHECKS"])
         self.assertGreater(config["CONN_MAX_AGE"], 0)
+
+
+class TelegramServiceTests(TestCase):
+    def _response(self, status, text="", payload=None):
+        response = mock.Mock(status_code=status, ok=status < 400, text=text)
+        response.json.return_value = payload or {}
+        return response
+
+    def test_a_markup_rejection_is_retried_as_plain_text(self):
+        from apps.common.services import telegram
+
+        rejected = self._response(400, "Bad Request: can't parse entities")
+        with mock.patch.object(
+            telegram.requests, "post", side_effect=[rejected, self._response(200)]
+        ) as post:
+            self.assertTrue(telegram.send_message("t", "1", "<b>Title</b> &amp; body"))
+
+        retry = post.call_args_list[1].kwargs["json"]
+        self.assertNotIn("parse_mode", retry)
+        self.assertEqual(retry["text"], "Title & body")
+
+    def test_detection_reads_the_newest_chat(self):
+        from apps.common.services import telegram
+
+        payload = {"ok": True, "result": [
+            {"message": {"chat": {"id": 1}}},
+            {"my_chat_member": {"chat": {"id": 2}}},
+        ]}
+        with mock.patch.object(
+            telegram.requests, "get", return_value=self._response(200, payload=payload)
+        ) as get:
+            self.assertEqual(telegram.resolve_chat_id("t"), "2")
+        self.assertEqual(get.call_args.kwargs["params"]["offset"], -10)
+
+    def test_a_webhook_conflict_is_explained(self):
+        from apps.common.services import telegram
+
+        payload = {"ok": False, "error_code": 409, "description": "Conflict"}
+        with mock.patch.object(
+            telegram.requests, "get", return_value=self._response(409, payload=payload)
+        ):
+            with self.assertRaisesMessage(telegram.TelegramError, "webhook"):
+                telegram.resolve_chat_id("t")

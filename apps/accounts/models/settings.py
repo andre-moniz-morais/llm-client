@@ -24,6 +24,9 @@ class UserSettings(models.Model):
     kie_api_key_encrypted = models.TextField(blank=True, default="")
     telegram_bot_token_encrypted = models.TextField(blank=True, default="")
     telegram_chat_id = models.CharField(max_length=64, blank=True, default="")
+    # Recorded when the token is validated, so the page can link to the bot
+    # without asking Telegram on every render.
+    telegram_bot_username = models.CharField(max_length=64, blank=True, default="")
     telegram_notifications_enabled = models.BooleanField(default=True)
 
     # A desktop notification is raised by the page itself, so this is only the
@@ -81,6 +84,15 @@ class UserSettings(models.Model):
     @property
     def telegram_connected(self) -> bool:
         return bool(self.telegram_bot_token_encrypted and self.telegram_chat_id)
+
+    @property
+    def telegram_awaiting_chat(self) -> bool:
+        """A token is saved but nobody has messaged the bot yet."""
+        return bool(self.telegram_bot_token_encrypted) and not self.telegram_chat_id
+
+    @property
+    def telegram_bot_link(self) -> str:
+        return f"https://t.me/{self.telegram_bot_username}" if self.telegram_bot_username else ""
 
     @property
     def telegram_active(self) -> bool:

@@ -2,13 +2,18 @@
 
    Sending a message posts the composer and appends the HTML the backend
    rendered for the pair of messages, so the transcript markup only exists in
-   the Django template. */
+   the Django template. The reply is produced by the background worker, so it
+   usually arrives pending and is re-fetched until it resolves. */
 
 (function () {
   "use strict";
 
-  const { $, postForm, elementFrom, errorFragment, busy, initAttachments, notify } =
+  const { $, $$, postForm, getFragment, elementFrom, errorFragment, busy, initAttachments, notify } =
     window.CRAFT;
+
+  // Quick at first, since short replies land in a couple of seconds, then
+  // easing off for the long ones.
+  const POLL_STEPS = [800, 1200, 1500, 2000, 3000];
 
   document.addEventListener("DOMContentLoaded", () => {
     const form = $("[data-chat-form]");
@@ -34,6 +39,33 @@
     const scrollToEnd = () => {
       transcript.scrollTop = transcript.scrollHeight;
     };
+
+    /** Re-fetch a pending reply until it resolves; returns the final node. */
+    function waitForReply(node) {
+      return new Promise((resolve) => {
+        let attempt = 0;
+        const tick = async () => {
+          const delay = POLL_STEPS[Math.min(attempt, POLL_STEPS.length - 1)];
+          attempt += 1;
+          try {
+            const result = await getFragment(node.dataset.pollUrl);
+            const fresh = result.ok ? elementFrom(result.html).firstElementChild : null;
+            if (fresh) {
+              const atEnd =
+                transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 40;
+              node.replaceWith(fresh);
+              node = fresh;
+              if (atEnd) scrollToEnd();
+              if (!fresh.dataset.pollUrl) return resolve(fresh);
+            }
+          } catch (error) {
+            // A dropped poll is not fatal - the reply is safe on the server.
+          }
+          setTimeout(tick, delay);
+        };
+        setTimeout(tick, POLL_STEPS[0]);
+      });
+    }
 
     function placeholder() {
       const article = document.createElement("article");
@@ -73,7 +105,7 @@
           const fragment = elementFrom(result.html);
           // Read the reply out of the fragment before appending it, which
           // empties it, so the notification can quote the answer.
-          const reply = fragment.querySelector(".msg-assistant");
+          let reply = fragment.querySelector(".msg-assistant");
           transcript.appendChild(fragment);
 
           // A brand-new conversation gets its id back in a header, so the next
@@ -84,6 +116,13 @@
             const url = new URL(window.location.href);
             url.searchParams.set("conversation", id);
             window.history.replaceState({}, "", url);
+          }
+
+          // Keep the composer busy until the reply is in, so the next turn
+          // is sent with this one in its history.
+          if (reply && reply.dataset.pollUrl) {
+            scrollToEnd();
+            reply = await waitForReply(reply);
           }
 
           // After the id is known, so the tag identifies the right thread.
@@ -132,6 +171,13 @@
         event.preventDefault();
         send();
       }
+    });
+
+    // A reply still being written when the page was (re)loaded.
+    $$("[data-poll-url]", transcript).forEach((node) => {
+      waitForReply(node).then((reply) => {
+        if (notifyOnReply) notifyReply(reply);
+      });
     });
 
     scrollToEnd();

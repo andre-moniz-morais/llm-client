@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 
 from apps.accounts.models import UserSettings
+from apps.common.services import telegram
 
 User = get_user_model()
 
@@ -116,7 +117,11 @@ class BrowserNotificationsForm(StyledFormMixin, forms.Form):
 
 
 class TelegramForm(StyledFormMixin, forms.Form):
-    """The Telegram bridge: a bot token plus the chat to post into."""
+    """The Telegram bridge: a bot token plus the chat to post into.
+
+    A new token is checked against Telegram on submit, so a typo is reported
+    on the field instead of being stored and silently never delivering.
+    """
 
     telegram_bot_token = forms.CharField(
         label="Telegram bot token",
@@ -132,7 +137,7 @@ class TelegramForm(StyledFormMixin, forms.Form):
         label="Chat ID",
         required=False,
         strip=True,
-        help_text="Leave empty and press Detect after messaging your bot.",
+        help_text="Filled in automatically once you press Start in your bot's chat.",
     )
     telegram_notifications_enabled = forms.BooleanField(
         label="Send me every response on Telegram",
@@ -143,19 +148,36 @@ class TelegramForm(StyledFormMixin, forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.style_fields()
+        self.bot: dict = {}
+
+    def clean_telegram_bot_token(self) -> str:
+        token = self.cleaned_data.get("telegram_bot_token", "")
+        if token and not self.data.get("remove_telegram"):
+            try:
+                self.bot = telegram.describe_bot(token)
+            except telegram.TelegramError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return token
 
     def apply_to(self, user_settings: UserSettings) -> list[str]:
         changed = []
         if self.cleaned_data.get("remove_telegram"):
             user_settings.telegram_bot_token = ""
             user_settings.telegram_chat_id = ""
-            return ["telegram_bot_token_encrypted", "telegram_chat_id"]
-
-        if self.cleaned_data.get("telegram_bot_token"):
-            user_settings.telegram_bot_token = self.cleaned_data["telegram_bot_token"]
-            changed.append("telegram_bot_token_encrypted")
+            user_settings.telegram_bot_username = ""
+            return ["telegram_bot_token_encrypted", "telegram_chat_id", "telegram_bot_username"]
 
         chat_id = self.cleaned_data.get("telegram_chat_id", "")
+        token = self.cleaned_data.get("telegram_bot_token")
+        if token and token != user_settings.telegram_bot_token:
+            # The stored chat belongs to the old bot; a new bot cannot post to
+            # it until that chat has started it too. Keep only an id typed now.
+            if chat_id == user_settings.telegram_chat_id:
+                chat_id = ""
+            user_settings.telegram_bot_token = token
+            user_settings.telegram_bot_username = self.bot.get("username", "")
+            changed += ["telegram_bot_token_encrypted", "telegram_bot_username"]
+
         if chat_id != user_settings.telegram_chat_id:
             user_settings.telegram_chat_id = chat_id
             changed.append("telegram_chat_id")

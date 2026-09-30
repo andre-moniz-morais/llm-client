@@ -60,6 +60,8 @@ class Message(models.Model):
         SYSTEM = "system", "System"
 
     class Status(models.TextChoices):
+        # An assistant reply the worker has not produced yet.
+        PENDING = "pending", "Pending"
         COMPLETE = "complete", "Complete"
         FAILED = "failed", "Failed"
 
@@ -89,6 +91,18 @@ class Message(models.Model):
     @property
     def is_user(self) -> bool:
         return self.role == self.Role.USER
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status == self.Status.PENDING
+
+    @property
+    def is_stale(self) -> bool:
+        """Whether a pending reply has waited longer than any model should take."""
+        if not self.is_pending:
+            return False
+        age = (timezone.now() - self.created_at).total_seconds()
+        return age > settings.CHAT_TIMEOUT_SECONDS
 
 
 class Attachment(models.Model):

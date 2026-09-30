@@ -65,5 +65,5 @@ class GenerationViewSet(
     @action(detail=True, methods=["get", "post"])
     def refresh(self, request, pk=None):
         """Poll KIE for this task's current state."""
-        generation = engine.refresh(self.get_object())
+        generation = engine.check(self.get_object())
         return Response(self.get_serializer(generation).data)

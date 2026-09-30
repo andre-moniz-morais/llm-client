@@ -126,7 +126,7 @@ def status(request: HttpRequest, pk: int) -> HttpResponse:
     generation = get_object_or_404(
         Generation.objects.prefetch_related("assets"), pk=pk, user=request.user
     )
-    generation = engine.refresh(generation)
+    generation = engine.check(generation)
 
     response = _fragment(engine.render(generation))
     # `status` is a TextChoices member: a str subclass, which WSGI rejects as a

@@ -1,3 +1,3 @@
-from . import crypto, html, kie, telegram
+from . import crypto, html, kie, queue, telegram
 
-__all__ = ["crypto", "html", "kie", "telegram"]
+__all__ = ["crypto", "html", "kie", "queue", "telegram"]

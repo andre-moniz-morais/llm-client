@@ -7,7 +7,9 @@ notification must never take down the request that produced it.
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 
 import requests
 from django.conf import settings
@@ -16,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 # Telegram rejects messages longer than 4096 characters.
 MESSAGE_LIMIT = 4000
+
+# The update types that carry the chat someone reached the bot from.  Pressing
+# Start sends a message, but adding the bot to a group only produces a
+# membership change, so both are read.
+CHAT_UPDATE_KEYS = ("message", "edited_message", "channel_post", "my_chat_member")
+
+_TAG = re.compile(r"<[^>]+>")
 
 
 class TelegramError(Exception):
@@ -31,26 +40,40 @@ def send_message(token: str, chat_id: str, text: str, *, silent: bool = False) -
     if not (token and chat_id and text):
         return False
 
-    try:
-        response = requests.post(
-            _api(token, "sendMessage"),
-            json={
-                "chat_id": chat_id,
-                "text": text[:MESSAGE_LIMIT],
-                "parse_mode": "HTML",
-                "disable_notification": silent,
-                "link_preview_options": {"is_disabled": True},
-            },
-            timeout=15,
-        )
-    except requests.RequestException:
-        logger.warning("Could not reach Telegram", exc_info=True)
-        return False
+    response = _post_message(token, chat_id, text[:MESSAGE_LIMIT], silent=silent, parse_mode="HTML")
+    if response is not None and _is_markup_error(response):
+        # Truncation can split a tag or an entity, and a reply can contain
+        # something Telegram's HTML subset refuses. Losing the formatting is
+        # better than losing the notification.
+        plain = html.unescape(_TAG.sub("", text))[:MESSAGE_LIMIT]
+        response = _post_message(token, chat_id, plain, silent=silent, parse_mode=None)
 
+    if response is None:
+        return False
     if not response.ok:
         logger.warning("Telegram rejected a message: %s", response.text[:300])
         return False
     return True
+
+
+def _post_message(token: str, chat_id: str, text: str, *, silent: bool, parse_mode: str | None):
+    body = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_notification": silent,
+        "link_preview_options": {"is_disabled": True},
+    }
+    if parse_mode:
+        body["parse_mode"] = parse_mode
+    try:
+        return requests.post(_api(token, "sendMessage"), json=body, timeout=15)
+    except requests.RequestException:
+        logger.warning("Could not reach Telegram", exc_info=True)
+        return None
+
+
+def _is_markup_error(response) -> bool:
+    return response.status_code == 400 and "parse entities" in response.text
 
 
 def notify(user_settings, text: str) -> bool:
@@ -81,20 +104,31 @@ def resolve_chat_id(token: str) -> str:
     the user to have sent the bot a message first.
     """
     try:
-        response = requests.get(_api(token, "getUpdates"), params={"limit": 10}, timeout=15)
+        # A negative offset reads from the newest end; without it Telegram hands
+        # back the oldest pending updates and a recent Start could be missed.
+        response = requests.get(
+            _api(token, "getUpdates"), params={"offset": -10, "limit": 10}, timeout=15
+        )
         payload = response.json()
     except (requests.RequestException, ValueError) as exc:
         raise TelegramError(f"Could not reach Telegram: {exc}") from exc
 
     if not payload.get("ok"):
+        if payload.get("error_code") == 409:
+            # A webhook and getUpdates are mutually exclusive, and removing
+            # someone's webhook is not ours to do silently.
+            raise TelegramError(
+                "This bot has a webhook set, so its messages cannot be read here. "
+                "Remove the webhook or use a dedicated bot, or enter the chat ID by hand."
+            )
         raise TelegramError(payload.get("description") or "Telegram rejected this bot token.")
 
     for update in reversed(payload.get("result") or []):
-        message = update.get("message") or update.get("channel_post") or {}
-        chat = message.get("chat") or {}
-        if chat.get("id") is not None:
-            return str(chat["id"])
+        for key in CHAT_UPDATE_KEYS:
+            chat = (update.get(key) or {}).get("chat") or {}
+            if chat.get("id") is not None:
+                return str(chat["id"])
 
     raise TelegramError(
-        "No conversation found. Send your bot a message on Telegram first, then try again."
+        "No conversation found yet. Open your bot on Telegram, press Start, then press Detect."
     )
