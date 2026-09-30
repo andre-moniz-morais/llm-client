@@ -20,17 +20,28 @@
         {% for generation in generations %}
           {% for asset in generation.assets.all %}
             <article class="gallery-card glass">
-              <div class="gallery-thumb">
-                {% if asset.kind == "video" %}
-                  <video src="{{ asset.url }}" controls preload="metadata" playsinline></video>
-                {% elif asset.kind == "audio" %}
+              {% if asset.kind == "audio" %}
+                <div class="gallery-thumb">
                   {% if asset.thumbnail_url %}<img src="{{ asset.thumbnail_url }}" alt="" loading="lazy">{% else %}
                     <span class="empty-icon">{% include "partials/icon.html" with name="music" %}</span>
                   {% endif %}
-                {% else %}
-                  <img src="{{ asset.url }}" alt="{{ generation.short_prompt }}" loading="lazy">
-                {% endif %}
-              </div>
+                </div>
+              {% else %}
+                {# Opens the viewer; a video plays there, so the thumbnail is only a still. #}
+                <button class="gallery-thumb" type="button"
+                        data-lightbox data-kind="{{ asset.kind }}" data-src="{{ asset.url }}"
+                        data-caption="{{ generation.short_prompt }}"
+                        {% if asset.thumbnail_url %}data-poster="{{ asset.thumbnail_url }}"{% endif %}
+                        aria-label="View {{ asset.kind }} full size">
+                  {% if asset.kind == "video" %}
+                    <video src="{{ asset.url }}#t=0.1" muted preload="metadata" playsinline
+                           {% if asset.thumbnail_url %}poster="{{ asset.thumbnail_url }}"{% endif %}></video>
+                    <span class="play-badge" aria-hidden="true">{% include "partials/icon.html" with name="play" %}</span>
+                  {% else %}
+                    <img src="{{ asset.url }}" alt="{{ generation.short_prompt }}" loading="lazy">
+                  {% endif %}
+                </button>
+              {% endif %}
               <div class="gallery-meta">
                 <strong>{{ generation.model_name|default:generation.model_slug|truncatechars:34 }}</strong>
                 {% if asset.kind == "audio" %}<audio src="{{ asset.url }}" controls preload="none"></audio>{% endif %}

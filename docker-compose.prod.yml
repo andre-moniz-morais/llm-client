@@ -10,10 +10,14 @@
 #   beat    - Celery beat; polls running generations every few seconds
 #   redis   - the broker between them
 #
-#   docker network ls                     # find the network they are on
-#   CRAFT_NETWORK=<that network> docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod build
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 #
 # Configuration lives in .env.prod - copy .env.prod.example and fill it in.
+# That one file is used twice: `env_file` below hands it to the containers,
+# and `--env-file` makes compose read it for the ${CRAFT_*} values in this
+# file. Without the flag, compose looks for those in the shell and in `.env`
+# (the development settings), not in .env.prod.
 
 x-app: &app
   image: craft:latest
@@ -142,7 +146,7 @@ networks:
     # attaches to it. `external: true` makes a missing network a clear error
     # rather than a silently-created empty one.
     external: true
-    name: ${CRAFT_NETWORK:-infra}
+    name: ${CRAFT_NETWORK:-docker_shared_network}
   # Private to this stack: nothing else on the shared network can reach Redis.
   craft:
     internal: true

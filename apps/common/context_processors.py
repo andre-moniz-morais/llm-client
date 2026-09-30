@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from apps.catalog.services import catalog
 
+SITE_NAME = "CRAFT"
+
 # The sidebar's sections, in order.  Kept here rather than in the template so
 # the active-state logic has something to compare against.
 NAV_SECTIONS = [
@@ -19,5 +21,5 @@ def navigation(request) -> dict:
     return {
         "nav_sections": NAV_SECTIONS,
         "category_labels": catalog.CATEGORY_LABELS,
-        "site_name": "CRAFT",
+        "site_name": SITE_NAME,
     }

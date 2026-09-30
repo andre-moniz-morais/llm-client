@@ -2,9 +2,10 @@
 Rendered both on page load and as the fragment returned after a turn, so the
 markup for a message lives in exactly one place.
 {% endcomment %}
+{% load static %}
 {% for message in messages_list %}
   <article class="msg msg-{{ message.role }}{% if message.status == 'failed' %} msg-failed{% endif %}" data-message-id="{{ message.pk }}"{% if message.is_pending %} data-poll-url="{% url 'chat:message-status' message.pk %}"{% endif %}>
-    <div class="msg-avatar" aria-hidden="true">{% if message.is_user %}{{ user.username|slice:":1"|upper }}{% else %}AI{% endif %}</div>
+    <div class="msg-avatar" aria-hidden="true">{% if message.is_user %}{{ user.username|slice:":1"|upper }}{% else %}<img src="{% static 'img/mascot-head.webp' %}" alt="" width="34" height="34">{% endif %}</div>
     <div class="msg-body">
       <div class="msg-meta">
         <strong>{% if message.is_user %}You{% else %}{{ conversation.model_name|default:"Assistant" }}{% endif %}</strong>

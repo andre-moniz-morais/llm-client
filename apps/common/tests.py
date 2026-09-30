@@ -222,3 +222,49 @@ class TelegramServiceTests(TestCase):
         ):
             with self.assertRaisesMessage(telegram.TelegramError, "webhook"):
                 telegram.resolve_chat_id("t")
+
+
+class MediaStorageTests(TestCase):
+    OPTIONS = {
+        "bucket_name": "craft",
+        "region_name": "us-east-1",
+        "location": "media",
+        "access_key": "key",
+        "secret_key": "secret-value",
+        "endpoint_url": "http://minio:9000",
+        "addressing_style": "path",
+        "signature_version": "s3v4",
+    }
+
+    def test_urls_are_signed_for_the_public_endpoint(self):
+        from apps.common.storage import MediaStorage
+
+        storage = MediaStorage(**self.OPTIONS, public_endpoint_url="https://s3.example.com")
+        url = storage.url("generations/a.png")
+
+        self.assertTrue(url.startswith("https://s3.example.com/craft/media/generations/a.png?"))
+        self.assertIn("X-Amz-Signature=", url)
+        # Reads and writes still go through the internal endpoint.
+        self.assertEqual(storage.connection.meta.client.meta.endpoint_url, "http://minio:9000")
+
+    def test_without_a_public_endpoint_urls_use_the_internal_one(self):
+        from apps.common.storage import MediaStorage
+
+        url = MediaStorage(**self.OPTIONS).url("generations/a.png")
+        self.assertTrue(url.startswith("http://minio:9000/craft/media/"))
+
+
+class TelegramMediaTests(TestCase):
+    def test_a_photo_is_sent_by_url_with_an_html_caption(self):
+        from apps.common.services import telegram
+
+        ok = mock.Mock(status_code=200, ok=True, text="")
+        with mock.patch.object(telegram.requests, "post", return_value=ok) as post:
+            self.assertTrue(
+                telegram.send_media("t", "1", "photo", url="https://x/a.png", caption="<b>Hi</b>")
+            )
+
+        self.assertTrue(post.call_args.args[0].endswith("/sendPhoto"))
+        body = post.call_args.kwargs["json"]
+        self.assertEqual(body["photo"], "https://x/a.png")
+        self.assertEqual(body["parse_mode"], "HTML")

@@ -163,12 +163,13 @@ and addresses them by container name.
 cp .env.prod.example .env.prod        # then fill it in
 docker network ls                     # find the network Postgres and MinIO are on
 
-CRAFT_NETWORK=infra docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod build
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CRAFT_NETWORK` | `infra` | The existing external Docker network to join. |
+| `CRAFT_NETWORK` | `docker_shared_network` | The existing external Docker network to join. |
 | `CRAFT_BIND` | `127.0.0.1` | Interface the port is published on. `0.0.0.0` to expose it on the host. |
 | `CRAFT_PORT` | `8000` | Host port. |
 

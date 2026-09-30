@@ -1,12 +1,11 @@
 {% extends "layout/base.html" %}
+{% load static %}
 
 {% block layout %}
   <div class="auth-shell">
     <div class="auth-card glass">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><path d="M16 3 4 10v12l12 7 12-7V10Z"/><path d="M16 3v26M4 10l12 7 12-7"/></svg>
-        </span>
+        <img class="mascot mascot-sm" src="{% static 'img/mascot.webp' %}" alt="" width="92" height="108">
         <span class="brand-text">
           <strong>{{ site_name }}</strong>
           <small>Generative studio</small>
@@ -15,7 +14,7 @@
 
       {% if messages %}
         {% for message in messages %}
-          <div class="flash flash-{{ message.tags|default:'info' }}" style="margin-bottom:14px">{{ message }}</div>
+          <div class="flash flash-{{ message.tags|default:'info' }}">{{ message }}</div>
         {% endfor %}
       {% endif %}
 

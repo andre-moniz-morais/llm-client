@@ -178,6 +178,8 @@ if USE_S3:
         # MinIO does not do virtual-host style addressing without DNS per
         # bucket, so path style is the portable choice.
         "addressing_style": os.environ.get("AWS_S3_ADDRESSING_STYLE", "path"),
+        # SigV4 is what MinIO expects; older boto defaults still presign with v2.
+        "signature_version": os.environ.get("AWS_S3_SIGNATURE_VERSION", "s3v4"),
     }
     if os.environ.get("AWS_ACCESS_KEY_ID"):
         _s3_options["access_key"] = os.environ["AWS_ACCESS_KEY_ID"]
@@ -185,13 +187,19 @@ if USE_S3:
         _s3_options["secret_key"] = os.environ["AWS_SECRET_ACCESS_KEY"]
     if os.environ.get("AWS_S3_ENDPOINT_URL"):
         _s3_options["endpoint_url"] = os.environ["AWS_S3_ENDPOINT_URL"]
-    # The host browsers should fetch from, when it differs from the endpoint the
-    # app writes through - an internal MinIO address versus a public one.
+    # Where browsers fetch media from, when that differs from the endpoint the
+    # app writes through - an internal MinIO address versus its public domain.
+    # URLs are signed for this host, so a private bucket keeps working; see
+    # apps/common/storage.py.
+    if os.environ.get("AWS_S3_PUBLIC_ENDPOINT_URL"):
+        _s3_options["public_endpoint_url"] = os.environ["AWS_S3_PUBLIC_ENDPOINT_URL"]
+    # A public bucket (or CDN) served from its own domain, with unsigned URLs.
+    # Only meaningful with AWS_QUERYSTRING_AUTH=false.
     if os.environ.get("AWS_S3_CUSTOM_DOMAIN"):
         _s3_options["custom_domain"] = os.environ["AWS_S3_CUSTOM_DOMAIN"]
 
     DEFAULT_STORAGE = {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "BACKEND": "apps.common.storage.MediaStorage",
         "OPTIONS": _s3_options,
     }
 else:

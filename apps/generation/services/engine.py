@@ -202,8 +202,25 @@ def _filename_for(asset: Asset, response) -> str:
     return name[:120]
 
 
+# How a stored asset kind is sent to Telegram.
+TELEGRAM_KINDS = {
+    Asset.Kind.IMAGE: "photo",
+    Asset.Kind.VIDEO: "video",
+    Asset.Kind.AUDIO: "audio",
+}
+# A generation rarely returns more; past this the rest arrive as links.
+TELEGRAM_MAX_ASSETS = 4
+# Telegram fetches media at once, but a link in the chat is opened later, so
+# links are signed for the longest time S3 allows (7 days).
+TELEGRAM_LINK_TTL = 7 * 24 * 60 * 60
+
+
 def notify(generation: Generation) -> None:
-    """Tell the user on Telegram that a generation finished."""
+    """Tell the user on Telegram that a generation finished.
+
+    A success is sent as the media itself, captioned with the model and
+    prompt; anything that cannot be sent as media falls back to a link.
+    """
     user_settings = getattr(generation.user, "settings", None)
     if user_settings is None or not user_settings.telegram_active or generation.notified:
         return
@@ -213,13 +230,75 @@ def notify(generation: Generation) -> None:
     model = escape(generation.model_name or generation.model_slug)
     if generation.status == Generation.Status.SUCCEEDED:
         lines = [f"✅ <b>{model}</b> finished", escape(generation.short_prompt)]
-        lines += [escape(asset.remote_url) for asset in generation.assets.all()[:4]]
+        caption = "\n".join(line for line in lines if line)
+        assets = list(generation.assets.all())
+        delivered = _send_assets(
+            user_settings,
+            assets[:TELEGRAM_MAX_ASSETS],
+            caption,
+            extra=assets[TELEGRAM_MAX_ASSETS:],
+        )
     else:
         lines = [f"⚠️ <b>{model}</b> failed", escape(generation.error or "Unknown error")]
+        delivered = telegram.notify(user_settings, "\n".join(line for line in lines if line))
 
-    if telegram.notify(user_settings, "\n".join(line for line in lines if line)):
+    if delivered:
         generation.notified = True
         generation.save(update_fields=["notified"])
+
+
+def _send_assets(user_settings, assets: list[Asset], caption: str, *, extra: list[Asset]) -> bool:
+    """Send each asset as media, the caption on the first that goes through."""
+    from html import escape
+
+    unsent = list(extra)
+    delivered = False
+    for asset in assets:
+        if _send_asset(user_settings, asset, caption):
+            caption = ""
+            delivered = True
+        else:
+            unsent.append(asset)
+
+    # Whatever could not go as media still reaches the chat, as links - along
+    # with the caption, if no media carried it.
+    if caption or unsent:
+        links = [escape(_media_url(asset, expire=TELEGRAM_LINK_TTL)) for asset in unsent]
+        text = "\n".join(line for line in [caption, *links] if line)
+        delivered = telegram.notify(user_settings, text) or delivered
+    return delivered
+
+
+def _send_asset(user_settings, asset: Asset, caption: str) -> bool:
+    """Send our stored copy by URL; Telegram fetches it from the bucket.
+
+    By URL Telegram takes photos up to 5 MB and other media up to 20 MB;
+    anything larger is refused here and ends up as a link instead.
+    """
+    url = _media_url(asset)
+    if not url:
+        return False
+    kind = TELEGRAM_KINDS.get(asset.kind, "document")
+    return telegram.send_media(
+        user_settings.telegram_bot_token,
+        user_settings.telegram_chat_id,
+        kind,
+        url=url,
+        caption=caption,
+    )
+
+
+def _media_url(asset: Asset, *, expire: int | None = None) -> str:
+    """The public URL of our copy, signed for ``expire`` seconds when signed.
+
+    Falls back to the provider's URL for an asset whose download failed.
+    """
+    if not asset.file:
+        return asset.remote_url
+    storage = asset.file.storage
+    if expire and hasattr(storage, "querystring_expire"):
+        return storage.url(asset.file.name, expire=expire)
+    return asset.file.url
 
 
 def render(generation: Generation) -> str:

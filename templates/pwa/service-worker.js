@@ -5,13 +5,15 @@
    offline page for navigations that fail. Nothing else is cached: API answers
    and generated media must always be fresh. */
 
-const VERSION = "craft-v1";
+const VERSION = "craft-v2";
 const SHELL = [
   "{% static 'css/app.css' %}",
   "{% static 'js/app.js' %}",
   "{% static 'js/chat.js' %}",
   "{% static 'js/studio.js' %}",
-  "{% static 'icons/icon.svg' %}",
+  "{% static 'icons/favicon.png' %}",
+  "{% static 'img/mascot.webp' %}",
+  "{% static 'img/mascot-head.webp' %}",
   "/offline/",
 ];
 

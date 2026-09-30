@@ -369,6 +369,82 @@
     });
   }
 
+  /* ------------------------------------------------------------ lightbox */
+
+  /** Full-size viewer for generated images and videos.
+   *
+   * Any element with data-lightbox (and data-src / data-kind) opens it, found
+   * by delegation so cards swapped in by polling work too. Arrow keys and the
+   * side buttons step through every viewable item on the page, in order. */
+  function initLightbox() {
+    const dialog = $("[data-lightbox-dialog]");
+    if (!dialog || typeof dialog.showModal !== "function") return;
+
+    const stage = $("[data-lightbox-stage]", dialog);
+    const caption = $("[data-lightbox-caption]", dialog);
+    const count = $("[data-lightbox-count]", dialog);
+    const download = $("[data-lightbox-download]", dialog);
+    const prev = $("[data-lightbox-prev]", dialog);
+    const next = $("[data-lightbox-next]", dialog);
+
+    let items = [];
+    let index = 0;
+
+    function show(position) {
+      index = (position + items.length) % items.length;
+      const item = items[index].dataset;
+
+      stage.replaceChildren();
+      let media;
+      if (item.kind === "video") {
+        media = document.createElement("video");
+        media.controls = true;
+        media.autoplay = true;
+        media.playsInline = true;
+        if (item.poster) media.poster = item.poster;
+      } else {
+        media = document.createElement("img");
+        media.alt = item.caption || "";
+      }
+      media.src = item.src;
+      stage.appendChild(media);
+
+      caption.textContent = item.caption || "";
+      download.href = item.src;
+      const several = items.length > 1;
+      count.textContent = several ? `${index + 1} / ${items.length}` : "";
+      prev.hidden = !several;
+      next.hidden = !several;
+    }
+
+    document.addEventListener("click", (event) => {
+      const trigger = event.target.closest("[data-lightbox]");
+      if (!trigger) return;
+      event.preventDefault();
+      items = $$("[data-lightbox]");
+      show(items.indexOf(trigger));
+      dialog.showModal();
+    });
+
+    prev.addEventListener("click", () => show(index - 1));
+    next.addEventListener("click", () => show(index + 1));
+    $("[data-lightbox-close]", dialog).addEventListener("click", () => dialog.close());
+
+    // A click on the dimmed backdrop lands on the dialog element itself.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog || event.target === stage) dialog.close();
+    });
+
+    dialog.addEventListener("keydown", (event) => {
+      if (items.length < 2) return;
+      if (event.key === "ArrowLeft") show(index - 1);
+      if (event.key === "ArrowRight") show(index + 1);
+    });
+
+    // Stop a playing video rather than leave it running out of sight.
+    dialog.addEventListener("close", () => stage.replaceChildren());
+  }
+
   /* ---------------------------------------------------------------- boot */
 
   window.CRAFT = {
@@ -393,6 +469,7 @@
     initAutogrow();
     initRanges();
     initNotificationSettings();
+    initLightbox();
     initServiceWorker();
   });
 })();

@@ -319,3 +319,98 @@ class BackgroundPollingTests(TestCase):
             tasks.poll(generation.pk)
 
         self.assertEqual(refresh.call_args.args[0].pk, generation.pk)
+
+
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class TelegramDeliveryTests(TestCase):
+    """A finished generation is sent to Telegram as the media itself."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("hal", password="pw-for-testing-1")
+        self.user.settings.telegram_bot_token = "123:abc"
+        self.user.settings.telegram_chat_id = "777"
+        self.user.settings.save()
+        self.generation = Generation.objects.create(
+            user=self.user,
+            category="image",
+            model_slug="x",
+            model_name="Nano Banana",
+            prompt="a red pomeranian",
+            status=Generation.Status.SUCCEEDED,
+        )
+
+    def _asset(self, content=b"png-bytes", remote_url="https://cdn.example/a.png"):
+        from django.core.files.base import ContentFile
+
+        from apps.generation.models import Asset
+
+        asset = Asset.objects.create(generation=self.generation, kind="image", remote_url=remote_url)
+        if content is not None:
+            asset.file.save("a.png", ContentFile(content), save=True)
+        return asset
+
+    def _notify(self, media_results):
+        with (
+            mock.patch(
+                "apps.common.services.telegram.send_media", side_effect=media_results
+            ) as media,
+            mock.patch("apps.common.services.telegram.send_message", return_value=True) as text,
+        ):
+            engine.notify(self.generation)
+        return media, text
+
+    def test_an_image_is_sent_as_a_photo_from_our_storage(self):
+        asset = self._asset()
+
+        media, text = self._notify([True])
+
+        self.assertEqual(media.call_args.args[2], "photo")
+        # Our copy in the bucket, not the provider's URL.
+        self.assertEqual(media.call_args.kwargs["url"], asset.file.url)
+        self.assertIn("a red pomeranian", media.call_args.kwargs["caption"])
+        text.assert_not_called()
+        self.generation.refresh_from_db()
+        self.assertTrue(self.generation.notified)
+
+    def test_media_telegram_refuses_arrives_as_a_link_with_the_caption(self):
+        asset = self._asset()
+
+        media, text = self._notify([False])
+
+        self.assertEqual(media.call_count, 1)
+        message = text.call_args.args[2]
+        self.assertIn("a red pomeranian", message)
+        self.assertIn(asset.file.url, message)
+
+    def test_an_asset_that_was_never_stored_uses_the_provider_url(self):
+        self._asset(content=None)
+
+        media, _ = self._notify([True])
+
+        self.assertEqual(media.call_args.kwargs["url"], "https://cdn.example/a.png")
+
+    def test_links_are_signed_for_a_week(self):
+        asset = self._asset()
+        storage = mock.Mock(querystring_expire=3600)
+        storage.url.return_value = "https://s3.example.com/signed"
+
+        asset.file.storage = storage
+        url = engine._media_url(asset, expire=engine.TELEGRAM_LINK_TTL)
+
+        self.assertEqual(url, "https://s3.example.com/signed")
+        self.assertEqual(storage.url.call_args.kwargs["expire"], 7 * 24 * 60 * 60)
+
+    def test_a_failure_is_a_text_message(self):
+        self.generation.status = Generation.Status.FAILED
+        self.generation.error = "Insufficient credits"
+        self.generation.save()
+
+        media, text = self._notify([])
+
+        media.assert_not_called()
+        self.assertIn("Insufficient credits", text.call_args.args[2])

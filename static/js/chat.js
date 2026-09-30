@@ -72,7 +72,9 @@
       article.className = "msg msg-assistant";
       article.dataset.pending = "true";
       article.innerHTML =
-        '<div class="msg-avatar" aria-hidden="true">AI</div>' +
+        '<div class="msg-avatar" aria-hidden="true">' +
+        `<img src="${transcript.dataset.assistantAvatar || ""}" alt="" width="34" height="34">` +
+        "</div>" +
         '<div class="msg-body"><div class="msg-content">' +
         '<span class="typing"><span></span><span></span><span></span></span>' +
         "</div></div>";

@@ -24,13 +24,13 @@
 
   <div class="chat-layout">
     <div class="chat-main">
-      <div class="transcript glass" id="transcript" data-transcript>
+      <div class="transcript glass" id="transcript" data-transcript data-assistant-avatar="{% static 'img/mascot-head.webp' %}">
         {% if messages_list %}
           {% include "partials/messages.html" with messages_list=messages_list %}
         {% else %}
           <div class="empty" data-empty-state>
-            <span class="empty-icon">{% include "partials/icon.html" with name="spark" %}</span>
-            <strong>Start a conversation</strong>
+            <img class="mascot" src="{% static 'img/mascot.webp' %}" alt="" width="132" height="155">
+            <strong>What shall we make today?</strong>
             <span>Pick a model above and ask anything. Attach images for models that accept them.</span>
           </div>
         {% endif %}

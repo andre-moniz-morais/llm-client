@@ -32,5 +32,13 @@ keeps them themeable via currentColor and avoids an extra request per icon.
   <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
 {% elif name == "external" %}
   <svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>
+{% elif name == "chevron-left" %}
+  <svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
+{% elif name == "chevron-right" %}
+  <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+{% elif name == "expand" %}
+  <svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>
+{% elif name == "play" %}
+  <svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5Z"/></svg>
 {% endif %}
 {% endspaceless %}

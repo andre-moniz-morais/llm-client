@@ -8,8 +8,8 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
-  "background_color": "#07070f",
-  "theme_color": "#0a0a14",
+  "background_color": "#fff8f3",
+  "theme_color": "#aa3234",
   "categories": ["productivity", "graphics", "utilities"],
   "icons": [
     { "src": "{% static 'icons/icon-192.png' %}", "sizes": "192x192", "type": "image/png", "purpose": "any" },

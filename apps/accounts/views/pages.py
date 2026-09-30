@@ -18,11 +18,15 @@ from apps.accounts.forms.auth import (
     TelegramForm,
 )
 from apps.accounts.models import UserSettings
+from apps.common.context_processors import SITE_NAME
 from apps.common.services import kie, telegram
 
 
 class SignInView(LoginView):
     template_name = "pages/login.html"
+    # LoginView sets `site_name` to the request's domain, which would override
+    # the context processor and put the hostname where the brand belongs.
+    extra_context = {"site_name": SITE_NAME}
     authentication_form = LoginForm
     redirect_authenticated_user = True
 
