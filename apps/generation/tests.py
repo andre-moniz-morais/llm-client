@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.http import QueryDict
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from apps.catalog.services.docs import ModelSpec
 from apps.generation.models import Generation
@@ -236,6 +238,60 @@ class GenerationFlowTests(TestCase):
         self.assertEqual(generation.status, Generation.Status.SUCCEEDED)
         self.assertEqual(generation.assets.count(), 1)
         self.assertEqual(generation.assets.first().remote_url, "https://cdn.example/a.png")
+
+    def test_a_storage_failure_does_not_undo_the_success(self):
+        generation = Generation.objects.create(
+            user=self.user,
+            category="image",
+            model_slug="x",
+            adapter="jobs",
+            task_id="task-123",
+            status=Generation.Status.RUNNING,
+        )
+
+        client = mock.Mock()
+        client.job_status.return_value = {
+            "state": "success",
+            "resultJson": {"resultUrls": ["https://cdn.example/a.png"]},
+        }
+        response = mock.MagicMock(headers={})
+        response.iter_content.return_value = [b"png"]
+
+        with (
+            mock.patch("apps.generation.services.engine.kie.client_for", return_value=client),
+            mock.patch("apps.generation.services.engine.requests.get", return_value=response),
+            mock.patch(
+                "django.db.models.fields.files.FieldFile.save",
+                side_effect=ConnectionError("bucket unreachable"),
+            ),
+        ):
+            engine.refresh(generation)
+
+        generation.refresh_from_db()
+        self.assertEqual(generation.status, Generation.Status.SUCCEEDED)
+        asset = generation.assets.get()
+        self.assertFalse(asset.file)
+        self.assertEqual(asset.url, "https://cdn.example/a.png")
+
+    def test_a_stale_task_is_reported(self):
+        generation = Generation.objects.create(
+            user=self.user,
+            category="image",
+            model_slug="x",
+            adapter="jobs",
+            task_id="task-123",
+            status=Generation.Status.RUNNING,
+        )
+        Generation.objects.filter(pk=generation.pk).update(
+            created_at=timezone.now() - timedelta(days=1)
+        )
+        generation.refresh_from_db()
+
+        with mock.patch("apps.generation.services.engine.notify") as notify:
+            engine.refresh(generation)
+
+        self.assertEqual(generation.status, Generation.Status.FAILED)
+        notify.assert_called_once_with(generation)
 
     def test_a_transient_polling_error_leaves_the_task_running(self):
         from apps.common.services import kie

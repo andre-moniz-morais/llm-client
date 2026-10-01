@@ -104,6 +104,7 @@ def refresh(generation: Generation) -> Generation:
     if generation.is_stale:
         generation.mark_failed("The task did not finish in time.")
         generation.save()
+        notify(generation)
         return generation
 
     if not generation.task_id:
@@ -189,7 +190,14 @@ def download(asset: Asset) -> bool:
         logger.warning("Could not download %s", asset.remote_url, exc_info=True)
         return False
 
-    asset.file.save(_filename_for(asset, response), ContentFile(bytes(content)), save=True)
+    try:
+        asset.file.save(_filename_for(asset, response), ContentFile(bytes(content)), save=True)
+    except Exception:
+        # Whatever the storage backend raises (botocore for S3, OSError on
+        # disk). Letting it out would roll back the whole success, and the
+        # next poll would hit the same wall until the task went stale.
+        logger.warning("Could not store %s", asset.remote_url, exc_info=True)
+        return False
     return True
 
 
