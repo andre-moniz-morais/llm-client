@@ -103,6 +103,27 @@
     );
   }
 
+  /** The chat history column becomes a slide-over on narrow screens; this
+   * opens and closes it. It shares the navigation drawer's scrim. */
+  function initThreads() {
+    const panel = $("[data-threads]");
+    const toggle = $("[data-threads-toggle]");
+    const scrim = $("[data-nav-scrim]");
+    if (!panel || !toggle) return;
+
+    const setOpen = (open) => {
+      panel.classList.toggle("is-open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      if (scrim) scrim.hidden = !open;
+    };
+
+    toggle.addEventListener("click", () => setOpen(!panel.classList.contains("is-open")));
+    if (scrim) scrim.addEventListener("click", () => setOpen(false));
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") setOpen(false);
+    });
+  }
+
   /* --------------------------------------------------------- model picker */
 
   /** Wire the search box and provider dropdown to the model <select>.
@@ -465,6 +486,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     initNavigation();
+    initThreads();
     initModelBar();
     initAutogrow();
     initRanges();

@@ -8,6 +8,9 @@
 {% endblock %}
 
 {% block topbar_actions %}
+  <button class="button button-sm button-ghost thread-toggle" type="button" data-threads-toggle aria-controls="threads" aria-expanded="false">
+    History
+  </button>
   <a class="button button-sm" href="{% url 'chat:index' %}">
     {% include "partials/icon.html" with name="plus" %} New chat
   </a>
@@ -73,7 +76,7 @@
       </form>
     </div>
 
-    <aside class="panel glass thread-panel">
+    <aside class="panel glass thread-panel" id="threads" data-threads aria-label="Conversation history">
       <div class="panel-head">
         <h2>History</h2>
         <p>{{ conversations|length }}</p>
@@ -86,7 +89,7 @@
             <small>{{ thread.model_name|default:thread.model_slug }} · {{ thread.updated_at|timesince }} ago</small>
           </a>
         {% empty %}
-          <p class="muted" style="font-size:12.5px">No conversations yet.</p>
+          <p class="muted">No conversations yet.</p>
         {% endfor %}
       </div>
     </aside>

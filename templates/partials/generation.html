@@ -43,7 +43,7 @@ status header says it has finished.
             {% elif asset.kind == "audio" %}
               {% if asset.thumbnail_url %}<img src="{{ asset.thumbnail_url }}" alt="" loading="lazy">{% endif %}
               <audio src="{{ asset.url }}" controls preload="none"></audio>
-              {% if asset.title %}<p class="result-prompt" style="padding:0 12px 10px">{{ asset.title }}</p>{% endif %}
+              {% if asset.title %}<p class="result-prompt media-title">{{ asset.title }}</p>{% endif %}
             {% else %}
               <button class="media-open" type="button"
                       data-lightbox data-kind="image" data-src="{{ asset.url }}"
@@ -73,7 +73,7 @@ status header says it has finished.
     {% endwith %}
 
   {% else %}
-    <p class="muted" style="font-size:12.5px">
+    <p class="muted">
       Queued{% if generation.task_id %} · task {{ generation.task_id|slice:":12" }}{% endif %}
     </p>
     <div class="progress-bar" aria-label="Generating"></div>

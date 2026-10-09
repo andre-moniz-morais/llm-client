@@ -5,16 +5,14 @@
 {% block page_subtitle %}<div class="subtitle">{{ generations.paginator.count }} generation{{ generations.paginator.count|pluralize }}</div>{% endblock %}
 
 {% block content %}
-  <div class="panel glass" style="flex:none">
-    <div class="filter-row">
-      <a class="button button-sm{% if not active_filter %} button-primary{% endif %}" href="{% url 'generation:gallery' %}">All</a>
-      <a class="button button-sm{% if active_filter == 'image' %} button-primary{% endif %}" href="?category=image">Images</a>
-      <a class="button button-sm{% if active_filter == 'video' %} button-primary{% endif %}" href="?category=video">Videos</a>
-      <a class="button button-sm{% if active_filter == 'music' %} button-primary{% endif %}" href="?category=music">Music</a>
-    </div>
-  </div>
+  <nav class="segmented" aria-label="Filter by type">
+    <a class="segment{% if not active_filter %} is-active{% endif %}" href="{% url 'generation:gallery' %}"{% if not active_filter %} aria-current="page"{% endif %}>All</a>
+    <a class="segment{% if active_filter == 'image' %} is-active{% endif %}" href="?category=image"{% if active_filter == 'image' %} aria-current="page"{% endif %}>Images</a>
+    <a class="segment{% if active_filter == 'video' %} is-active{% endif %}" href="?category=video"{% if active_filter == 'video' %} aria-current="page"{% endif %}>Videos</a>
+    <a class="segment{% if active_filter == 'music' %} is-active{% endif %}" href="?category=music"{% if active_filter == 'music' %} aria-current="page"{% endif %}>Music</a>
+  </nav>
 
-  <div style="flex:1; min-height:0; overflow-y:auto">
+  <div class="scroll-area">
     {% if generations %}
       <div class="gallery-grid">
         {% for generation in generations %}

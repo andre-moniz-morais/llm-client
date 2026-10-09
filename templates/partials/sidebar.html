@@ -12,7 +12,7 @@
 
   <nav class="nav">
     {% for section in nav_sections %}
-      <a class="nav-item{% if category == section.key %} is-active{% endif %}" href="{% url section.url_name %}">
+      <a class="nav-item{% if category == section.key %} is-active{% endif %}" href="{% url section.url_name %}"{% if category == section.key %} aria-current="page"{% endif %}>
         <span class="nav-icon" aria-hidden="true">{% include "partials/icon.html" with name=section.icon %}</span>
         <span class="nav-label">{{ section.label }}</span>
       </a>
@@ -20,7 +20,7 @@
   </nav>
 
   <div class="sidebar-foot">
-    <a class="nav-item{% if category == 'settings' %} is-active{% endif %}" href="{% url 'accounts:settings' %}">
+    <a class="nav-item{% if category == 'settings' %} is-active{% endif %}" href="{% url 'accounts:settings' %}"{% if category == 'settings' %} aria-current="page"{% endif %}>
       <span class="nav-icon" aria-hidden="true">{% include "partials/icon.html" with name="settings" %}</span>
       <span class="nav-label">Settings</span>
     </a>

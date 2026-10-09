@@ -50,7 +50,7 @@
           Get a key {% include "partials/icon.html" with name="external" %}
         </a>
       </div>
-      <p class="field-help" style="margin-top:12px">
+      <p class="field-help form-note">
         Keys are encrypted before they are stored and are never sent to the browser again.
       </p>
     </form>
@@ -79,7 +79,7 @@
       <div class="button-row">
         <button class="button button-primary" type="submit">Save notification settings</button>
       </div>
-      <p class="field-help" style="margin-top:12px">
+      <p class="field-help form-note">
         A notification is raised while a chat tab is open but not in front of you,
         so a slow reply does not need watching. The browser has to grant
         permission as well, and that grant is per browser and per device.
@@ -149,14 +149,14 @@
     </form>
 
     {% if user_settings.telegram_connected %}
-      <form method="post" action="{% url 'accounts:telegram-detect' %}" style="margin-top:10px">
+      <form class="form-note" method="post" action="{% url 'accounts:telegram-detect' %}">
         {% csrf_token %}
         <button class="button button-sm button-ghost" type="submit">Detect chat ID again</button>
       </form>
     {% endif %}
   </section>
 
-  <section class="panel glass">
+  <section class="panel glass settings-aside">
     <div class="panel-head">
       <h2>How it connects</h2>
     </div>

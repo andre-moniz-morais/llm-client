@@ -5,7 +5,7 @@
    offline page for navigations that fail. Nothing else is cached: API answers
    and generated media must always be fresh. */
 
-const VERSION = "craft-v2";
+const VERSION = "craft-v3";
 const SHELL = [
   "{% static 'css/app.css' %}",
   "{% static 'js/app.js' %}",
